@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+openpyxl
+python-multipart
+sqlmodel
+python-jose[cryptography]
+passlib[bcrypt]
+email-validator
+ocrmypdf
+pypdf

@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #165DFF;
+  --primary-hover: #0E4BD9;
+  --foreground: #080C1A;
+  --secondary: #6A7686;
+  --muted: #EFF2F7;
+  --border: #F3F4F3;
+  --card-grey: #F1F3F6;
+  --success: #30B22D;
+  --success-light: #DCFCE7;
+  --error: #ED6B60;
+  --error-light: #FEE2E2;
+  --warning: #FED71F;
+  --warning-light: #FEF9C3;
+  --background: #ffffff;
+}
+
+@theme inline {
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-foreground: var(--foreground);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-card-grey: var(--card-grey);
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-error: var(--error);
+  --color-error-light: var(--error-light);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-background: var(--background);
+  
+  --radius-card: 24px;
+  --radius-button: 50px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-lexend-deca), sans-serif;
+  overflow-x: hidden;
+}
+
+/* Scrollbar utilities */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
