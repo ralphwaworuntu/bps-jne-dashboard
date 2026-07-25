@@ -190,6 +190,7 @@ export default function GeotaggingPage() {
     const indexOfFirstRow = indexOfLastRow - rowsPerPage;
     const currentGroups = groupedData.slice(indexOfFirstRow, indexOfLastRow);
     const totalPages = Math.ceil(groupedData.length / rowsPerPage);
+    const TABLE_COLS = 12;
 
     return (
         <DashboardLayout>
@@ -351,7 +352,7 @@ export default function GeotaggingPage() {
                                 <tbody className="divide-y divide-border">
                                     {loading ? (
                                         <tr>
-                                            <td colSpan={10} className="py-16 text-center">
+                                            <td colSpan={TABLE_COLS} className="py-16 text-center">
                                                 <div className="flex flex-col items-center justify-center p-6 text-center">
                                                     <Loader2 className="size-8 text-primary animate-spin mb-4" />
                                                     <h3 className="text-lg font-semibold text-foreground mb-1">Memuat Data Geotaging</h3>
@@ -361,7 +362,7 @@ export default function GeotaggingPage() {
                                         </tr>
                                     ) : error ? (
                                         <tr>
-                                            <td colSpan={10} className="py-16 text-center">
+                                            <td colSpan={TABLE_COLS} className="py-16 text-center">
                                                 <div className="flex flex-col items-center justify-center p-6 text-center">
                                                     <div className="size-16 bg-red-50 text-red-500 rounded-2xl flex items-center justify-center mb-4">
                                                         <MapPin className="size-8" />
@@ -373,7 +374,7 @@ export default function GeotaggingPage() {
                                         </tr>
                                     ) : currentGroups.length === 0 ? (
                                         <tr>
-                                            <td colSpan={10} className="py-16 text-center">
+                                            <td colSpan={TABLE_COLS} className="py-16 text-center">
                                                 <div className="flex flex-col items-center justify-center p-6 text-center">
                                                     <div className="size-16 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-4">
                                                         <MapPin className="size-8" />
@@ -528,7 +529,7 @@ export default function GeotaggingPage() {
                                                     </tr>
                                                     {expandedRows[row['Cnote']] && hasChildren && (
                                                         <tr className="bg-gray-50/40 border-b border-border">
-                                                            <td colSpan={10} className="p-0">
+                                                            <td colSpan={TABLE_COLS} className="p-0">
                                                                 <div className="overflow-x-auto bg-gray-50 p-4 border-t border-b border-border shadow-inner">
                                                                     <table className="w-full text-sm text-left border border-border/50 rounded-lg bg-white overflow-hidden shadow-sm">
                                                                         <thead className="bg-gray-100/50 text-secondary font-medium border-b border-border/50 whitespace-nowrap text-xs">
@@ -669,7 +670,7 @@ export default function GeotaggingPage() {
                         {!loading && !error && filteredData.length > 0 && (
                             <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50 border-t border-border">
                                 <span className="text-sm text-secondary">
-                                    Displaying <span className="font-medium text-foreground">{indexOfFirstRow + 1}</span> to <span className="font-medium text-foreground">{Math.min(indexOfLastRow, filteredData.length)}</span> of <span className="font-medium text-foreground">{filteredData.length}</span> entries
+                                    Displaying <span className="font-medium text-foreground">{Math.min(indexOfFirstRow + 1, groupedData.length)}</span> to <span className="font-medium text-foreground">{Math.min(indexOfLastRow, groupedData.length)}</span> of <span className="font-medium text-foreground">{groupedData.length}</span> groups
                                 </span>
 
                                 <div className="flex items-center gap-1">

@@ -314,3 +314,46 @@ class Notification(SQLModel, table=True):
     
     user: Optional[User] = Relationship(back_populates="notifications")
 
+
+# --- IT / User Management ---
+
+class UserUpdate(SQLModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    shift: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class UserResetPassword(SQLModel):
+    new_password: str
+
+
+class SystemErrorLog(SQLModel, table=True):
+    """Log error sistem untuk menu IT > Log Error."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    level: str = Field(default="ERROR", index=True)  # ERROR / WARNING / CRITICAL
+    source: str = Field(default="backend", index=True)
+    path: Optional[str] = None
+    method: Optional[str] = None
+    message: str
+    traceback: Optional[str] = None
+
+
+class SystemErrorLogRead(SQLModel):
+    id: int
+    created_at: datetime
+    level: str
+    source: str
+    path: Optional[str] = None
+    method: Optional[str] = None
+    message: str
+    traceback: Optional[str] = None
+
+
+class RoleOption(SQLModel):
+    section: str
+    role: str
+    description: str
+

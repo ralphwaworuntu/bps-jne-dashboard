@@ -5,24 +5,20 @@ import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
     LayoutDashboard,
-    Map,
     Box,
     Truck,
     Users,
     BarChart3,
-    FileText,
-    Headset,
     X,
-    FileSpreadsheet,
     AlertTriangle,
     CheckCircle,
-    Database,
     MapPin,
     DollarSign,
     Briefcase,
-    TrendingUp,
     Wallet,
-    ReceiptText
+    ReceiptText,
+    ScrollText,
+    UserCog,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -124,10 +120,28 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                             </Link>
 
                             <Link href="/dashboard/v2/firstmile" className="group cursor-pointer">
-                                <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${isActive('/dashboard/v2/firstmile') || pathname?.startsWith('/dashboard/v2/firstmile') ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
-                                    <Truck className={`size-6 shrink-0 transition-all duration-300 ${isActive('/dashboard/v2/firstmile') || pathname?.startsWith('/dashboard/v2/firstmile') ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
+                                <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${
+                                    (pathname === '/dashboard/v2/firstmile'
+                                        || pathname?.startsWith('/dashboard/v2/firstmile/ots-cabang')
+                                        || pathname?.startsWith('/dashboard/v2/firstmile/database-smu'))
+                                        ? 'bg-muted'
+                                        : 'bg-white hover:bg-muted'
+                                } ${isCollapsed ? 'justify-center' : ''}`}>
+                                    <Truck className={`size-6 shrink-0 transition-all duration-300 ${
+                                        (pathname === '/dashboard/v2/firstmile'
+                                            || pathname?.startsWith('/dashboard/v2/firstmile/ots-cabang')
+                                            || pathname?.startsWith('/dashboard/v2/firstmile/database-smu'))
+                                            ? 'text-foreground'
+                                            : 'text-secondary group-hover:text-foreground'
+                                    }`} />
                                     {!isCollapsed && (
-                                        <span className={`font-medium transition-all duration-300 ${isActive('/dashboard/v2/firstmile') || pathname?.startsWith('/dashboard/v2/firstmile') ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
+                                        <span className={`font-medium transition-all duration-300 ${
+                                            (pathname === '/dashboard/v2/firstmile'
+                                                || pathname?.startsWith('/dashboard/v2/firstmile/ots-cabang')
+                                                || pathname?.startsWith('/dashboard/v2/firstmile/database-smu'))
+                                                ? 'font-semibold text-foreground'
+                                                : 'text-secondary group-hover:text-foreground'
+                                        }`}>
                                             Firstmile Data
                                         </span>
                                     )}
@@ -279,6 +293,70 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                             }`}
                                         >
                                             Kelola Kasbon Karyawan
+                                        </span>
+                                    )}
+                                </div>
+                            </Link>
+                        </div>
+                    </div>
+
+                    {/* IT */}
+                    <div className="flex flex-col gap-4">
+                        {!isCollapsed && <h3 className="font-medium text-sm text-secondary px-2">IT</h3>}
+                        <div className="flex flex-col gap-1">
+                            <Link href="/dashboard/v2/it/kelola-user" className="group cursor-pointer">
+                                <div
+                                    className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${
+                                        pathname?.startsWith('/dashboard/v2/it/kelola-user')
+                                            ? 'bg-muted'
+                                            : 'bg-white hover:bg-muted'
+                                    } ${isCollapsed ? 'justify-center' : ''}`}
+                                >
+                                    <UserCog
+                                        className={`size-6 shrink-0 transition-all duration-300 ${
+                                            pathname?.startsWith('/dashboard/v2/it/kelola-user')
+                                                ? 'text-foreground'
+                                                : 'text-secondary group-hover:text-foreground'
+                                        }`}
+                                    />
+                                    {!isCollapsed && (
+                                        <span
+                                            className={`font-medium transition-all duration-300 ${
+                                                pathname?.startsWith('/dashboard/v2/it/kelola-user')
+                                                    ? 'font-semibold text-foreground'
+                                                    : 'text-secondary group-hover:text-foreground'
+                                            }`}
+                                        >
+                                            Kelola User
+                                        </span>
+                                    )}
+                                </div>
+                            </Link>
+
+                            <Link href="/dashboard/v2/it/log-error" className="group cursor-pointer">
+                                <div
+                                    className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${
+                                        pathname?.startsWith('/dashboard/v2/it/log-error')
+                                            ? 'bg-muted'
+                                            : 'bg-white hover:bg-muted'
+                                    } ${isCollapsed ? 'justify-center' : ''}`}
+                                >
+                                    <ScrollText
+                                        className={`size-6 shrink-0 transition-all duration-300 ${
+                                            pathname?.startsWith('/dashboard/v2/it/log-error')
+                                                ? 'text-foreground'
+                                                : 'text-secondary group-hover:text-foreground'
+                                        }`}
+                                    />
+                                    {!isCollapsed && (
+                                        <span
+                                            className={`font-medium transition-all duration-300 ${
+                                                pathname?.startsWith('/dashboard/v2/it/log-error')
+                                                    ? 'font-semibold text-foreground'
+                                                    : 'text-secondary group-hover:text-foreground'
+                                            }`}
+                                        >
+                                            Log Error
                                         </span>
                                     )}
                                 </div>

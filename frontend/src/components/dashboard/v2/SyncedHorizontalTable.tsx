@@ -8,63 +8,83 @@ type SyncedHorizontalTableProps = {
     tableClassName?: string;
 };
 
-/** Scroll horizontal di atas dan di bawah, scrollLeft tersinkron */
+/** Scroll horizontal di atas dan di bawah tabel, scrollLeft tersinkron */
 export default function SyncedHorizontalTable({
     children,
     className = "",
     tableClassName = "",
 }: SyncedHorizontalTableProps) {
     const topRef = useRef<HTMLDivElement>(null);
+    const midRef = useRef<HTMLDivElement>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const [spacerW, setSpacerW] = useState(0);
+    const syncing = useRef(false);
 
     const updateSpacer = useCallback(() => {
-        const el = bottomRef.current;
+        const el = midRef.current;
         if (!el) return;
-        setSpacerW(el.scrollWidth);
+        // Prefer table scrollWidth so spacer matches content
+        const table = el.querySelector("table");
+        setSpacerW(table ? table.scrollWidth : el.scrollWidth);
     }, []);
 
     useEffect(() => {
-        const el = bottomRef.current;
+        const el = midRef.current;
         if (!el) return;
         updateSpacer();
         const ro = new ResizeObserver(() => updateSpacer());
         ro.observe(el);
+        const table = el.querySelector("table");
+        if (table) ro.observe(table);
         window.addEventListener("resize", updateSpacer);
         return () => {
             ro.disconnect();
             window.removeEventListener("resize", updateSpacer);
         };
-    }, [updateSpacer]);
+    }, [updateSpacer, children]);
 
-    const onTopScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        const left = e.currentTarget.scrollLeft;
-        if (bottomRef.current) bottomRef.current.scrollLeft = left;
-    };
-
-    const onBottomScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        const left = e.currentTarget.scrollLeft;
-        if (topRef.current) topRef.current.scrollLeft = left;
+    const syncScroll = (source: "top" | "mid" | "bottom", left: number) => {
+        if (syncing.current) return;
+        syncing.current = true;
+        if (source !== "top" && topRef.current) topRef.current.scrollLeft = left;
+        if (source !== "mid" && midRef.current) midRef.current.scrollLeft = left;
+        if (source !== "bottom" && bottomRef.current) bottomRef.current.scrollLeft = left;
+        requestAnimationFrame(() => {
+            syncing.current = false;
+        });
     };
 
     return (
         <div className={`rounded-2xl border border-border bg-white overflow-hidden ${className}`}>
+            {/* Top scrollbar */}
             <div
                 ref={topRef}
-                className="overflow-x-auto overflow-y-hidden border-b border-border bg-muted/40"
+                className="overflow-x-auto overflow-y-hidden border-b border-border bg-muted/30 px-0 py-1"
                 style={{ scrollbarWidth: "thin" }}
-                onScroll={onTopScroll}
-                aria-hidden
+                onScroll={(e) => syncScroll("top", e.currentTarget.scrollLeft)}
+                aria-label="Scroll horizontal atas"
             >
-                <div style={{ width: spacerW || "100%", height: 1 }} />
+                <div style={{ width: Math.max(spacerW, 1), height: 8 }} />
             </div>
+
+            {/* Table body */}
             <div
-                ref={bottomRef}
-                className={`overflow-x-auto ${tableClassName}`}
-                style={{ scrollbarWidth: "thin" }}
-                onScroll={onBottomScroll}
+                ref={midRef}
+                className={`overflow-x-auto scrollbar-hide ${tableClassName}`}
+                onScroll={(e) => syncScroll("mid", e.currentTarget.scrollLeft)}
             >
                 {children}
+            </div>
+
+            {/* Bottom scrollbar */}
+            <div
+                ref={bottomRef}
+                className="overflow-x-auto overflow-y-hidden border-t border-border bg-muted/30 px-0 py-1"
+                style={{ scrollbarWidth: "thin" }}
+                onScroll={(e) => syncScroll("bottom", e.currentTarget.scrollLeft)}
+                aria-label="Scroll horizontal bawah"
+            >
+                <div style={{ width: Math.max(spacerW, 1), height: 8 }} />
             </div>
         </div>
     );

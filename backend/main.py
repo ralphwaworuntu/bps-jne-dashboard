@@ -1,9 +1,9 @@
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, status, BackgroundTasks, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel import Session, select
-from typing import List
+from typing import List, Optional, Dict, Set
 
 from database import create_db_and_tables, get_session, engine
 from models import User, UserCreate, UserRead, Token, UserLogin, DailyIssue, DailyIssueAttachment
@@ -16,7 +16,7 @@ from pathlib import Path
 from utils.file_manager import save_upload_with_history
 from utils.firstmile_logic import process_ots_general, process_ots_cabang
 from utils.potensi_claim_generator import generate_potensi_claim
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 import shutil
 import json
@@ -35,15 +35,15 @@ def read_root():
 
 @app.get("/system-info")
 def get_system_info():
-    def get_file_time(path: Path):
-        if path.exists():
-            # Return ISO format or specific format? Frontend expects specific format?
-            # Let's return ISO and format in frontend
+    def get_file_time(path: Optional[Path]):
+        if path and path.exists():
             dt = datetime.fromtimestamp(path.stat().st_mtime)
             return dt.isoformat()
         return None
 
-    def get_original_filename(path: Path):
+    def get_original_filename(path: Optional[Path]):
+        if not path or not path.exists():
+            return None
         meta_path = path.parent / (path.name + ".meta")
         if meta_path.exists():
             try:
@@ -54,6 +54,12 @@ def get_system_info():
             except:
                 pass
         return None
+
+    master_inbound = _all_shipment_master_file()
+    tpl_ctc = _all_shipment_template_file("all_inbound_ctc")
+    tpl_inbound = _all_shipment_template_file("inbound")
+    tpl_outstanding = _all_shipment_template_file("outstanding")
+    ctc_range_start, ctc_range_end = _range_from_mtime(tpl_ctc)
 
     return {
         "master_last_update": get_file_time(MASTER_DATA_FILE),
@@ -87,7 +93,25 @@ def get_system_info():
         "ref_sla_shopee_filename": get_original_filename(REF_SLA_SHOPEE_FILE),
         "ref_db_1_filename": get_original_filename(REF_DB_1_FILE),
         "ref_db_2_filename": get_original_filename(REF_DB_2_FILE),
-        "ref_account_filename": get_original_filename(REF_ACCOUNT_FILE)
+        "ref_account_filename": get_original_filename(REF_ACCOUNT_FILE),
+        "smu_last_update": get_file_time(SMU_FILE),
+        "smu_filename": get_original_filename(SMU_FILE),
+        "master_report_last_update": get_file_time(MASTER_REPORT_FILE),
+        "master_report_filename": get_original_filename(MASTER_REPORT_FILE),
+        "cakupan_last_update": get_file_time(CAKUPAN_FILE),
+        "cakupan_filename": get_original_filename(CAKUPAN_FILE),
+        "kiriman_yes_last_update": get_file_time(KIRIMAN_YES_FILE),
+        "kiriman_yes_filename": get_original_filename(KIRIMAN_YES_FILE),
+        "all_shipment_master_inbound_last_update": get_file_time(master_inbound),
+        "all_shipment_master_inbound_filename": get_original_filename(master_inbound),
+        "all_inbound_ctc_last_update": get_file_time(tpl_ctc),
+        "all_inbound_ctc_filename": get_original_filename(tpl_ctc),
+        "all_inbound_ctc_range_start": ctc_range_start,
+        "all_inbound_ctc_range_end": ctc_range_end,
+        "inbound_last_update": get_file_time(tpl_inbound),
+        "inbound_filename": get_original_filename(tpl_inbound),
+        "outstanding_last_update": get_file_time(tpl_outstanding),
+        "outstanding_filename": get_original_filename(tpl_outstanding),
     }
 
 # Configure CORS
@@ -105,6 +129,8 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    # Allow LAN access in development (e.g. http://192.168.1.33:3000)
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -127,6 +153,19 @@ async def log_requests(request: Request, call_next):
         with open(log_path, "a") as log_file:
             log_file.write(f"\n[{datetime.now()}] Global Error: {str(e)}\n{error_msg}\n")
 
+        try:
+            from routers.it import persist_error_log
+            persist_error_log(
+                message=str(e),
+                traceback_text=error_msg,
+                path=str(request.url.path),
+                method=request.method,
+                level="CRITICAL",
+                source="middleware",
+            )
+        except Exception:
+            pass
+
         origin = request.headers.get("origin", "")
         cors_headers = {}
         if origin in origins:
@@ -141,7 +180,7 @@ async def log_requests(request: Request, call_next):
             headers=cors_headers,
         )
 
-from routers import daily_issue, correction_request, notifications, analytics, finance, hc, sales
+from routers import daily_issue, correction_request, notifications, analytics, finance, hc, sales, it
 
 @app.on_event("startup")
 def on_startup():
@@ -154,6 +193,7 @@ app.include_router(analytics.router)
 app.include_router(finance.router)
 app.include_router(hc.router)
 app.include_router(sales.router)
+app.include_router(it.router)
 
 # --- Auth Routes ---
 
@@ -207,6 +247,11 @@ GEOTAGGING_DIR = Path("uploads/geotagging")
 DB_CCC_DIR = Path("uploads/db_ccc")
 BREACH_MONITORING_DIR = Path("uploads/breach_monitoring")
 POTENSI_CLAIM_DIR = Path("uploads/potensi_claim")
+SMU_DIR = Path("uploads/smu")
+MASTER_REPORT_DIR = Path("uploads/master_report")
+CAKUPAN_DIR = Path("uploads/cakupan_area")
+KIRIMAN_YES_DIR = Path("uploads/kiriman_yes")
+ALL_SHIPMENT_DIR = Path("uploads/all_shipment")
 
 REF_SLA_LAZADA_DIR = Path("uploads/referensi/sla_lazada")
 REF_SERVICE_DIR = Path("uploads/referensi/service")
@@ -234,6 +279,69 @@ GEOTAGGING_FILE = GEOTAGGING_DIR / "geotagging_data.csv"
 DB_CCC_FILE = DB_CCC_DIR / "db_ccc_data.xlsx"
 BREACH_MONITORING_FILE = BREACH_MONITORING_DIR / "breach_monitoring_data.xlsx"
 POTENSI_CLAIM_FILE = POTENSI_CLAIM_DIR / "potensi_claim_data.xlsx"
+SMU_FILE = SMU_DIR / "smu_data.csv"
+MASTER_REPORT_FILE = MASTER_REPORT_DIR / "master_report_data.csv"
+CAKUPAN_FILE = CAKUPAN_DIR / "cakupan_area_data.csv"
+KIRIMAN_YES_FILE = KIRIMAN_YES_DIR / "kiriman_yes_data.csv"
+
+ALL_SHIPMENT_TEMPLATE_KINDS = {
+    "all_inbound_ctc": "template_all_inbound_ctc",
+    "inbound": "template_inbound",
+    "outstanding": "template_outstanding",
+}
+
+
+def _find_stem_file(directory: Path, stem: str):
+    if not directory.exists():
+        return None
+    matches = [
+        p for p in directory.glob(f"{stem}.*")
+        if p.is_file() and not p.name.endswith(".meta") and p.suffix.lower() != ".meta"
+    ]
+    return matches[0] if matches else None
+
+
+def _all_shipment_master_file():
+    return _find_stem_file(ALL_SHIPMENT_DIR, "master_inbound")
+
+
+def _all_shipment_template_file(kind: str):
+    stem = ALL_SHIPMENT_TEMPLATE_KINDS.get(kind)
+    if not stem:
+        return None
+    return _find_stem_file(ALL_SHIPMENT_DIR, stem)
+
+
+def _range_from_mtime(path: Optional[Path]):
+    """14-day inclusive window ending on file mtime (placeholder until Excel date parsing)."""
+    if not path or not path.exists():
+        return None, None
+    end = datetime.fromtimestamp(path.stat().st_mtime)
+    start = end - timedelta(days=13)
+    return start.isoformat(), end.isoformat()
+
+
+def _save_all_shipment_upload(content: bytes, stem: str, original_filename: Optional[str]):
+    ALL_SHIPMENT_DIR.mkdir(parents=True, exist_ok=True)
+    suffix = Path(original_filename or "").suffix.lower()
+    if suffix not in {".xlsx", ".xls", ".csv"}:
+        suffix = ".xlsx"
+    for old in ALL_SHIPMENT_DIR.glob(f"{stem}.*"):
+        if old.is_file():
+            try:
+                old.unlink()
+            except Exception:
+                pass
+    dest = ALL_SHIPMENT_DIR / f"{stem}{suffix}"
+    with open(dest, "wb") as f:
+        f.write(content)
+    meta_path = ALL_SHIPMENT_DIR / f"{stem}{suffix}.meta"
+    try:
+        with open(meta_path, "w") as f:
+            json.dump({"original_filename": original_filename}, f)
+    except Exception:
+        pass
+    return dest
 
 def process_ccc_background(user_id: int, file_type: str = 'all_shipment'):
     print(f"Background Task: Starting Template CCC generation for {file_type}...")
@@ -726,20 +834,42 @@ async def upload_geotagging(
         import io
         
         # Try reading as Excel first, fallback to CSV
+        # IMPORTANT: read everything as string so identifiers like Cnote keep leading zeros
         try:
-            df = pd.read_excel(io.BytesIO(content), dtype={'Cnote': str, 'Runsheet No': str})
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
         except:
             try:
-                df = pd.read_csv(io.BytesIO(content), dtype={'Cnote': str, 'Runsheet No': str}, sep=None, engine='python')
+                df = pd.read_csv(
+                    io.BytesIO(content),
+                    dtype=str,
+                    sep=None,
+                    engine='python',
+                    keep_default_na=False,
+                )
             except UnicodeDecodeError:
-                df = pd.read_csv(io.BytesIO(content), dtype={'Cnote': str, 'Runsheet No': str}, sep=None, engine='python', encoding='latin1')
+                df = pd.read_csv(
+                    io.BytesIO(content),
+                    dtype=str,
+                    sep=None,
+                    engine='python',
+                    encoding='latin1',
+                    keep_default_na=False,
+                )
 
         # Clean up column names just in case
         df.columns = [str(col).strip() for col in df.columns]
 
+        # Normalize Cnote header to exact "Cnote" (case-insensitive match)
+        cnote_candidates = [c for c in df.columns if str(c).strip().lower() == "cnote"]
+        if cnote_candidates and cnote_candidates[0] != "Cnote":
+            df = df.rename(columns={cnote_candidates[0]: "Cnote"})
+
         # Force Cnote to string, removing '.0' if pandas parsed it as float before casting
         if 'Cnote' in df.columns:
-            df['Cnote'] = df['Cnote'].astype(str).str.replace(r'\.0$', '', regex=True)
+            df['Cnote'] = df['Cnote'].astype(str)
+            # If user uploads an Excel-friendly export with leading apostrophe, strip it for storage/UI
+            df['Cnote'] = df['Cnote'].str.replace(r"^'+", "", regex=True)
+            df['Cnote'] = df['Cnote'].str.replace(r'\.0$', '', regex=True)
             # handle 'nan' string from pandas
             df['Cnote'] = df['Cnote'].replace('nan', '')
 
@@ -2215,13 +2345,1113 @@ async def export_geotagging(current_user: User = Depends(get_current_active_user
     if not GEOTAGGING_FILE.exists():
         raise HTTPException(status_code=404, detail="File Geotagging tidak ditemukan untuk di export.")
     
-    # We return the file using FileResponse. Since the file is actually a CSV
-    # (even though it might be named .xlsx or .csv), we set headers for download.
-    from fastapi.responses import FileResponse
-    
-    return FileResponse(
-        path=GEOTAGGING_FILE,
-        filename="Geotagging_Updated_Data.csv",
+    # Generate an Excel-friendly CSV:
+    # - prefix apostrophe for numeric-leading Cnote so Excel keeps it as text (preserves leading zero)
+    try:
+        import pandas as pd
+        df = pd.read_csv(GEOTAGGING_FILE, sep=None, engine="python", dtype=str, encoding="utf-8", keep_default_na=False)
+    except UnicodeDecodeError:
+        df = pd.read_csv(GEOTAGGING_FILE, sep=None, engine="python", dtype=str, encoding="latin1", keep_default_na=False)
+
+    if "Cnote" in df.columns:
+        from decimal import Decimal, InvalidOperation
+        import re
+
+        sci_re = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+$")
+
+        def _expand_scientific(s: str) -> str:
+            if not s:
+                return s
+            if not sci_re.match(s):
+                return s
+            try:
+                d = Decimal(s)
+                # Convert to integer string if it's effectively an integer
+                if d == d.to_integral_value():
+                    return format(d.quantize(1), "f").split(".")[0]
+                return format(d, "f")
+            except (InvalidOperation, ValueError):
+                return s
+
+        def _excel_text_cnote(v: str):
+            s = "" if v is None else str(v)
+            s = s.replace("\ufeff", "")  # BOM safety if any
+            # keep empty as-is
+            if not s:
+                return s
+            # If it looks like scientific notation (e.g. 1.234E+14), expand it first
+            s = _expand_scientific(s)
+            # don't double-quote if already excel-text
+            if s.startswith("'"):
+                return s
+            return f"'{s}" if s[0].isdigit() else s
+
+        df["Cnote"] = df["Cnote"].map(_excel_text_cnote)
+
+    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+    return StreamingResponse(
+        io.BytesIO(csv_bytes),
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename=Geotagging_Updated_Data.csv"}
+        headers={"Content-Disposition": "attachment; filename=Geotagging_Updated_Data.csv"},
     )
+
+
+# ──────────────────────────────────────────────
+# SMU Firstmile
+# ──────────────────────────────────────────────
+
+SMU_CANONICAL_COLUMNS = [
+    "Tanggal Entry",
+    "SM NO",
+    "SM SCH DATE",
+    "REMARKS SM",
+    "SMU REMARKS DATE",
+    "SMU BAG",
+    "AWB",
+    "ket",
+]
+
+_SMU_ALIAS_MAP: dict[str, str] = {}
+for _col in SMU_CANONICAL_COLUMNS:
+    _SMU_ALIAS_MAP[_col.strip().lower()] = _col
+_SMU_ALIAS_MAP.update({
+    "tgl entry": "Tanggal Entry",
+    "tanggal_entry": "Tanggal Entry",
+    "tgl_entry": "Tanggal Entry",
+    "sm_no": "SM NO",
+    "smno": "SM NO",
+    "sm schedule date": "SM SCH DATE",
+    "sm_sch_date": "SM SCH DATE",
+    "remark sm": "REMARKS SM",
+    "remarks_sm": "REMARKS SM",
+    "smu remark date": "SMU REMARKS DATE",
+    "smu_remarks_date": "SMU REMARKS DATE",
+    "smubag": "SMU BAG",
+    "smu_bag": "SMU BAG",
+    "keterangan": "ket",
+})
+
+
+def _normalize_smu_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map: dict[str, str] = {}
+    for raw_col in df.columns:
+        key = str(raw_col).strip().lower()
+        canonical = _SMU_ALIAS_MAP.get(key)
+        if canonical and raw_col != canonical:
+            rename_map[raw_col] = canonical
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    for col in SMU_CANONICAL_COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+    return df[SMU_CANONICAL_COLUMNS]
+
+
+@app.post("/upload-smu-firstmile")
+async def upload_smu_firstmile(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+
+        try:
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
+        except Exception:
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", keep_default_na=False,
+                )
+            except UnicodeDecodeError:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", encoding="latin1", keep_default_na=False,
+                )
+
+        df.columns = [str(c).strip() for c in df.columns]
+        df = _normalize_smu_columns(df)
+        df = df.fillna("")
+
+        SMU_DIR.mkdir(parents=True, exist_ok=True)
+
+        if SMU_FILE.exists():
+            archive_dir = SMU_DIR / "archive"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.move(str(SMU_FILE), str(archive_dir / f"smu_data_{ts}.csv"))
+
+        df.to_csv(SMU_FILE, index=False)
+
+        meta_path = SMU_FILE.parent / (SMU_FILE.name + ".meta")
+        with open(meta_path, "w") as mf:
+            json.dump({"original_filename": file.filename, "uploaded_by": current_user.email, "timestamp": datetime.now().isoformat()}, mf)
+
+        log_file_path = SMU_DIR / "upload_log.jsonl"
+        with open(log_file_path, "a") as lf:
+            lf.write(json.dumps({"filename": "smu_data.csv", "original_filename": file.filename, "uploaded_by": current_user.email, "timestamp": datetime.now().isoformat()}) + "\n")
+
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Database SMU ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+
+        return {
+            "message": "Database SMU uploaded successfully",
+            "filename": file.filename,
+            "saved_as": str(SMU_FILE),
+            "rows": len(df),
+            "user": current_user.email,
+        }
+
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"Error in upload_smu_firstmile: {e}")
+        with open("backend_error.log", "a") as lf:
+            lf.write(f"\n[{datetime.now()}] Error upload_smu_firstmile: {str(e)}\n{error_msg}\n")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/api/smu-firstmile")
+async def get_smu_firstmile_data(current_user: User = Depends(get_current_active_user)):
+    if not SMU_FILE.exists():
+        return []
+    try:
+        df = pd.read_csv(SMU_FILE, dtype=str, keep_default_na=False)
+        df = df.fillna("")
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membaca data SMU: {str(e)}")
+
+
+@app.get("/download/smu-firstmile")
+async def download_smu_firstmile(current_user: User = Depends(get_current_active_user)):
+    if not SMU_FILE.exists():
+        raise HTTPException(status_code=404, detail="File SMU belum tersedia. Upload terlebih dahulu.")
+    return FileResponse(
+        path=str(SMU_FILE),
+        media_type="text/csv",
+        filename="database_smu_firstmile.csv",
+    )
+
+
+# ──────────────────────────────────────────────
+# Master Data Report Firstmile
+# ──────────────────────────────────────────────
+
+_MASTER_REPORT_COL_ALIASES = {
+    "service": ["service", "layanan"],
+    "tanggal": ["tanggal", "date", "tgl entry", "tgl_entry", "tanggal entry"],
+    "kota": ["kota", "city", "cabang", "origin", "branch", "cabang origin"],
+}
+
+
+def _find_master_report_col(columns, aliases: List[str]) -> Optional[str]:
+    normalized = {str(c).strip().lower(): c for c in columns}
+    for alias in aliases:
+        if alias in normalized:
+            return normalized[alias]
+    return None
+
+
+def _read_master_report_df() -> pd.DataFrame:
+    if not MASTER_REPORT_FILE.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(MASTER_REPORT_FILE, dtype=str, keep_default_na=False)
+    return df.fillna("")
+
+
+def _zero_metric() -> dict:
+    return {"awb": 0, "pct": 0.0}
+
+
+def _empty_tr_rcc_metrics() -> dict:
+    return {
+        "h0": _zero_metric(),
+        "h1_lt_12": _zero_metric(),
+        "wrong_date": _zero_metric(),
+        "total_awb": 0,
+        "total_pct": 0.0,
+    }
+
+
+def _empty_rcc_om_metrics() -> dict:
+    return {
+        "h0": _zero_metric(),
+        "h1_lt_12": _zero_metric(),
+        "h1_gt_12": _zero_metric(),
+        "wrong_date": _zero_metric(),
+        "h2": _zero_metric(),
+        "total_awb": 0,
+        "total_pct": 0.0,
+    }
+
+
+def _format_report_date(value: str) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "Unknown"
+    try:
+        dt = pd.to_datetime(raw, dayfirst=True, errors="coerce")
+        if pd.isna(dt):
+            return raw
+        return dt.strftime("%d-%b")
+    except Exception:
+        return raw
+
+
+def _build_firstmile_report(service: Optional[str] = None) -> dict:
+    df = _read_master_report_df()
+    if df.empty:
+        empty_gt = {
+            "lt_tr_rcc": _empty_tr_rcc_metrics(),
+            "lt_rcc_om": _empty_rcc_om_metrics(),
+        }
+        return {
+            "services": [],
+            "lt_tr_rcc": [],
+            "lt_rcc_om": [],
+            "grand_total": empty_gt,
+        }
+
+    service_col = _find_master_report_col(df.columns, _MASTER_REPORT_COL_ALIASES["service"])
+    tanggal_col = _find_master_report_col(df.columns, _MASTER_REPORT_COL_ALIASES["tanggal"])
+    kota_col = _find_master_report_col(df.columns, _MASTER_REPORT_COL_ALIASES["kota"])
+
+    services: List[str] = []
+    if service_col:
+        services = sorted(
+            {
+                str(v).strip()
+                for v in df[service_col].tolist()
+                if str(v).strip()
+            },
+            key=lambda s: s.lower(),
+        )
+
+    filtered = df
+    if service and service not in ("", "(All)", "All") and service_col:
+        filtered = df[df[service_col].astype(str).str.strip() == service.strip()]
+
+    # Group date -> cities from real rows; LT buckets remain stub zeros
+    groups: Dict[str, Set[str]] = {}
+    for _, row in filtered.iterrows():
+        date_label = _format_report_date(str(row[tanggal_col]) if tanggal_col else "")
+        city_label = (
+            str(row[kota_col]).strip()
+            if kota_col and str(row[kota_col]).strip()
+            else "Unknown"
+        )
+        groups.setdefault(date_label, set()).add(city_label)
+
+    # Stable-ish sort: try parse date for ordering, fallback alpha
+    def _date_sort_key(label: str):
+        try:
+            dt = pd.to_datetime(label, format="%d-%b", errors="coerce")
+            if pd.isna(dt):
+                return (1, label)
+            return (0, -dt.toordinal())
+        except Exception:
+            return (1, label)
+
+    lt_tr_rcc = []
+    lt_rcc_om = []
+    for date_label in sorted(groups.keys(), key=_date_sort_key):
+        cities = sorted(groups[date_label], key=lambda c: c.lower())
+        city_rows_tr = [
+            {"name": c, "metrics": _empty_tr_rcc_metrics()} for c in cities
+        ]
+        city_rows_om = [
+            {"name": c, "metrics": _empty_rcc_om_metrics()} for c in cities
+        ]
+        lt_tr_rcc.append({
+            "date": date_label,
+            "cities": city_rows_tr,
+            "metrics": _empty_tr_rcc_metrics(),
+        })
+        lt_rcc_om.append({
+            "date": date_label,
+            "cities": city_rows_om,
+            "metrics": _empty_rcc_om_metrics(),
+        })
+
+    return {
+        "services": services,
+        "lt_tr_rcc": lt_tr_rcc,
+        "lt_rcc_om": lt_rcc_om,
+        "grand_total": {
+            "lt_tr_rcc": _empty_tr_rcc_metrics(),
+            "lt_rcc_om": _empty_rcc_om_metrics(),
+        },
+    }
+
+
+@app.post("/upload-master-report-firstmile")
+async def upload_master_report_firstmile(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+
+        try:
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
+        except Exception:
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", keep_default_na=False,
+                )
+            except UnicodeDecodeError:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", encoding="latin1", keep_default_na=False,
+                )
+
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.fillna("")
+
+        MASTER_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        if MASTER_REPORT_FILE.exists():
+            archive_dir = MASTER_REPORT_DIR / "archive"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.move(str(MASTER_REPORT_FILE), str(archive_dir / f"master_report_data_{ts}.csv"))
+
+        df.to_csv(MASTER_REPORT_FILE, index=False)
+
+        meta_path = MASTER_REPORT_FILE.parent / (MASTER_REPORT_FILE.name + ".meta")
+        with open(meta_path, "w") as mf:
+            json.dump(
+                {
+                    "original_filename": file.filename,
+                    "uploaded_by": current_user.email,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                mf,
+            )
+
+        log_file_path = MASTER_REPORT_DIR / "upload_log.jsonl"
+        with open(log_file_path, "a") as lf:
+            lf.write(
+                json.dumps(
+                    {
+                        "filename": "master_report_data.csv",
+                        "original_filename": file.filename,
+                        "uploaded_by": current_user.email,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                + "\n"
+            )
+
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Master Data Report ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+
+        return {
+            "message": "Master Data Report uploaded successfully",
+            "filename": file.filename,
+            "saved_as": str(MASTER_REPORT_FILE),
+            "rows": len(df),
+            "user": current_user.email,
+        }
+
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"Error in upload_master_report_firstmile: {e}")
+        with open("backend_error.log", "a") as lf:
+            lf.write(f"\n[{datetime.now()}] Error upload_master_report_firstmile: {str(e)}\n{error_msg}\n")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/download/master-report-firstmile")
+async def download_master_report_firstmile(current_user: User = Depends(get_current_active_user)):
+    if not MASTER_REPORT_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="File Master Data Report belum tersedia. Upload terlebih dahulu.",
+        )
+    return FileResponse(
+        path=str(MASTER_REPORT_FILE),
+        media_type="text/csv",
+        filename="master_report_firstmile.csv",
+    )
+
+
+@app.get("/api/firstmile-report/services")
+async def get_firstmile_report_services(current_user: User = Depends(get_current_active_user)):
+    df = _read_master_report_df()
+    if df.empty:
+        return []
+    service_col = _find_master_report_col(df.columns, _MASTER_REPORT_COL_ALIASES["service"])
+    if not service_col:
+        return []
+    services = sorted(
+        {str(v).strip() for v in df[service_col].tolist() if str(v).strip()},
+        key=lambda s: s.lower(),
+    )
+    return services
+
+
+@app.get("/api/firstmile-report")
+async def get_firstmile_report(
+    service: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    try:
+        return _build_firstmile_report(service=service)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membangun report: {str(e)}")
+
+
+# ──────────────────────────────────────────────
+# Cakupan Area Delivery KOE (Lastmile)
+# ──────────────────────────────────────────────
+
+CAKUPAN_CANONICAL_COLUMNS = [
+    "Coding",
+    "Provinsi",
+    "Kota / Kabupaten",
+    "Kecamatan",
+    "Kelurahan",
+    "Kode POS",
+    "Status Cabang",
+    "Zona EXISTING",
+    "Cabang",
+    "Wilayah Grouping",
+    "Gate Inbound",
+    "Area Delivery",
+    "Jadwal Penerusan",
+    "Jadwal Penerusan ke Agen",
+    "Transportasi",
+    "ETD",
+    "ETA",
+    "Jadwal Delivery",
+    "Nama Kurir",
+    "ID Kurir",
+    "Ket",
+    "Keterangan",
+]
+
+_CAKUPAN_ALIAS_MAP: Dict[str, str] = {}
+for _col in CAKUPAN_CANONICAL_COLUMNS:
+    _CAKUPAN_ALIAS_MAP[_col.strip().lower()] = _col
+_CAKUPAN_ALIAS_MAP.update({
+    "no. coding": "Coding",
+    "no coding": "Coding",
+    "no_coding": "Coding",
+    "nocoding": "Coding",
+    "kota/kabupaten": "Kota / Kabupaten",
+    "kota kabupaten": "Kota / Kabupaten",
+    "kode_pos": "Kode POS",
+    "kodepos": "Kode POS",
+    "status_cabang": "Status Cabang",
+    "zona existing": "Zona EXISTING",
+    "zona_existing": "Zona EXISTING",
+    "wilayah grouping": "Wilayah Grouping",
+    "wilayah_grouping": "Wilayah Grouping",
+    "gate inbound": "Gate Inbound",
+    "gate_inbound": "Gate Inbound",
+    "area delivery": "Area Delivery",
+    "area_delivery": "Area Delivery",
+    "jadwal penerusan": "Jadwal Penerusan",
+    "jadwal_penerusan": "Jadwal Penerusan",
+    "jadwal penerusan ke agen": "Jadwal Penerusan ke Agen",
+    "jadwal penerusan ke agent": "Jadwal Penerusan ke Agen",
+    "jadwal_penerusan_ke_agen": "Jadwal Penerusan ke Agen",
+    "jadwal delivery": "Jadwal Delivery",
+    "jadwal_delivery": "Jadwal Delivery",
+    "nama kurir": "Nama Kurir",
+    "nama_kurir": "Nama Kurir",
+    "id kurir": "ID Kurir",
+    "id_kurir": "ID Kurir",
+})
+
+
+def _normalize_cakupan_columns(df: pd.DataFrame) -> pd.DataFrame:
+    rename_map: Dict[str, str] = {}
+    for raw_col in df.columns:
+        key = str(raw_col).strip().lower()
+        canonical = _CAKUPAN_ALIAS_MAP.get(key)
+        if canonical and raw_col != canonical:
+            rename_map[raw_col] = canonical
+    if rename_map:
+        df = df.rename(columns=rename_map)
+    for col in CAKUPAN_CANONICAL_COLUMNS:
+        if col not in df.columns:
+            df[col] = ""
+    return df[CAKUPAN_CANONICAL_COLUMNS]
+
+
+@app.post("/upload-cakupan-area")
+async def upload_cakupan_area(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+
+        try:
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
+        except Exception:
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", keep_default_na=False,
+                )
+            except UnicodeDecodeError:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", encoding="latin1", keep_default_na=False,
+                )
+
+        df.columns = [str(c).strip() for c in df.columns]
+        df = _normalize_cakupan_columns(df)
+        df = df.fillna("")
+
+        CAKUPAN_DIR.mkdir(parents=True, exist_ok=True)
+        if CAKUPAN_FILE.exists():
+            archive_dir = CAKUPAN_DIR / "archive"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.move(str(CAKUPAN_FILE), str(archive_dir / f"cakupan_area_data_{ts}.csv"))
+
+        df.to_csv(CAKUPAN_FILE, index=False)
+
+        meta_path = CAKUPAN_FILE.parent / (CAKUPAN_FILE.name + ".meta")
+        with open(meta_path, "w") as mf:
+            json.dump(
+                {
+                    "original_filename": file.filename,
+                    "uploaded_by": current_user.email,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                mf,
+            )
+
+        with open(CAKUPAN_DIR / "upload_log.jsonl", "a") as lf:
+            lf.write(
+                json.dumps(
+                    {
+                        "filename": "cakupan_area_data.csv",
+                        "original_filename": file.filename,
+                        "uploaded_by": current_user.email,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                + "\n"
+            )
+
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Cakupan Area Delivery ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+
+        return {
+            "message": "Cakupan Area Delivery uploaded successfully",
+            "filename": file.filename,
+            "saved_as": str(CAKUPAN_FILE),
+            "rows": len(df),
+            "user": current_user.email,
+        }
+
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"Error in upload_cakupan_area: {e}")
+        with open("backend_error.log", "a") as lf:
+            lf.write(f"\n[{datetime.now()}] Error upload_cakupan_area: {str(e)}\n{error_msg}\n")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/api/cakupan-area")
+async def get_cakupan_area(current_user: User = Depends(get_current_active_user)):
+    if not CAKUPAN_FILE.exists():
+        return []
+    try:
+        df = pd.read_csv(CAKUPAN_FILE, dtype=str, keep_default_na=False)
+        df.columns = [str(c).strip() for c in df.columns]
+        df = _normalize_cakupan_columns(df)
+        df = df.fillna("")
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membaca data cakupan: {str(e)}")
+
+
+@app.get("/download/cakupan-area")
+async def download_cakupan_area(current_user: User = Depends(get_current_active_user)):
+    if not CAKUPAN_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="File Cakupan Area belum tersedia. Upload terlebih dahulu.",
+        )
+    return FileResponse(
+        path=str(CAKUPAN_FILE),
+        media_type="text/csv",
+        filename="cakupan_area_delivery_koe.csv",
+    )
+
+
+# ──────────────────────────────────────────────
+# Database Kiriman Yes (Lastmile)
+# ──────────────────────────────────────────────
+
+_KIRIMAN_YES_COL_ALIASES = {
+    "cabang": ["cabang", "branch", "cabang destinasi", "dest", "destination"],
+    "status_pod": ["status pod", "status_pod", "statuspod", "pod status"],
+    "lt": ["lt", "status lt", "ots", "lead time", "leadtime"],
+}
+
+DB_STATUS_COLS = [
+    "CLOSE - CANCEL",
+    "CLOSE - RETURN",
+    "CLOSE - SUCCESS",
+    "UNDEL",
+    "UN IM",
+    "UN RCC",
+    "UN OM",
+]
+OTS_STATUS_COLS = ["UNDEL", "UN IM", "UN RCC", "UN OM"]
+
+
+def _find_kiriman_col(columns, aliases: List[str]) -> Optional[str]:
+    normalized = {str(c).strip().lower(): c for c in columns}
+    for alias in aliases:
+        if alias in normalized:
+            return normalized[alias]
+    return None
+
+
+def _read_kiriman_yes_df() -> pd.DataFrame:
+    if not KIRIMAN_YES_FILE.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(KIRIMAN_YES_FILE, dtype=str, keep_default_na=False)
+    df.columns = [str(c).strip() for c in df.columns]
+    return df.fillna("")
+
+
+def _map_status_bucket(raw: str) -> Optional[str]:
+    s = (raw or "").strip().upper()
+    if not s:
+        return None
+    # Normalize separators
+    compact = " ".join(s.replace("_", " ").replace("-", " - ").split())
+    rules = [
+        ("CLOSE - CANCEL", ["CLOSE - CANCEL", "CLOSE CANCEL", "CANCEL"]),
+        ("CLOSE - RETURN", ["CLOSE - RETURN", "CLOSE RETURN", "RETURN"]),
+        ("CLOSE - SUCCESS", ["CLOSE - SUCCESS", "CLOSE SUCCESS", "SUCCESS"]),
+        ("UNDEL", ["UNDEL", "UN DEL"]),
+        ("UN IM", ["UN IM", "UNIM"]),
+        ("UN RCC", ["UN RCC", "UNRCC"]),
+        ("UN OM", ["UN OM", "UNOM"]),
+    ]
+    for bucket, keys in rules:
+        for k in keys:
+            if k in compact or compact == k:
+                # Prefer exact-ish match for CANCEL/RETURN/SUCCESS only when CLOSE present
+                if bucket.startswith("CLOSE") and "CLOSE" not in compact and k in ("CANCEL", "RETURN", "SUCCESS"):
+                    if compact == k or compact.endswith(k):
+                        return bucket
+                    continue
+                if bucket.startswith("CLOSE") and "CLOSE" in compact:
+                    if "CANCEL" in compact and bucket == "CLOSE - CANCEL":
+                        return bucket
+                    if "RETURN" in compact and bucket == "CLOSE - RETURN":
+                        return bucket
+                    if "SUCCESS" in compact and bucket == "CLOSE - SUCCESS":
+                        return bucket
+                if bucket.startswith("UN"):
+                    if bucket == "UNDEL" and ("UNDEL" in compact or compact == "UN DEL"):
+                        return bucket
+                    if bucket == "UN IM" and ("UN IM" in compact or "UNIM" in compact.replace(" ", "")):
+                        return bucket
+                    if bucket == "UN RCC" and ("UN RCC" in compact or "UNRCC" in compact.replace(" ", "")):
+                        return bucket
+                    if bucket == "UN OM" and ("UN OM" in compact or "UNOM" in compact.replace(" ", "")):
+                        return bucket
+    return None
+
+
+def _normalize_lt_label(raw: str) -> str:
+    s = (raw or "").strip().upper().replace(" ", "")
+    if not s:
+        return "Unknown"
+    # >H+5 / H+5+
+    if s.startswith(">") or "H+5" in s and (">" in s or "+" in s[s.find("5") + 1 :]):
+        if "H+5" in s or s.startswith(">H"):
+            return ">H+5"
+    for n in range(0, 6):
+        if s in (f"H+{n}", f"H{n}", f"+{n}") or s == f"H+{n}":
+            return f"H+{n}"
+        if f"H+{n}" in s and n < 5:
+            return f"H+{n}"
+    if "H+5" in s or s.endswith("5"):
+        # treat H+5 and above as >H+5 when marked
+        if ">" in (raw or "") or s.startswith(">"):
+            return ">H+5"
+        return "H+5"
+    return (raw or "").strip() or "Unknown"
+
+
+_LT_ORDER = ["H+0", "H+1", "H+2", "H+3", "H+4", "H+5", ">H+5"]
+
+
+def _lt_sort_key(label: str):
+    try:
+        return (0, _LT_ORDER.index(label))
+    except ValueError:
+        return (1, label)
+
+
+def _empty_counts(cols: List[str]) -> Dict[str, int]:
+    return {c: 0 for c in cols}
+
+
+def _build_kiriman_yes_pivot(table: str, status_pod: Optional[str] = None) -> dict:
+    df = _read_kiriman_yes_df()
+    empty_db = {"rows": [], "grand_total": {**_empty_counts(DB_STATUS_COLS), "Grand Total": 0}, "status_options": []}
+    empty_ots = {"groups": [], "grand_total": {**_empty_counts(OTS_STATUS_COLS), "Grand Total": 0}, "status_options": []}
+
+    if df.empty:
+        return empty_db if table == "database" else empty_ots
+
+    cabang_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["cabang"])
+    status_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["status_pod"])
+    lt_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["lt"])
+
+    status_options: List[str] = []
+    if status_col:
+        status_options = sorted(
+            {str(v).strip() for v in df[status_col].tolist() if str(v).strip()},
+            key=lambda x: x.lower(),
+        )
+
+    filtered = df
+    if status_pod and status_pod not in ("", "(All)", "All") and status_col:
+        filtered = df[df[status_col].astype(str).str.strip() == status_pod.strip()]
+
+    if table == "database":
+        # Cabang -> status bucket counts
+        matrix: Dict[str, Dict[str, int]] = {}
+        for _, row in filtered.iterrows():
+            cabang = str(row[cabang_col]).strip() if cabang_col else "Unknown"
+            if not cabang:
+                cabang = "Unknown"
+            status_raw = str(row[status_col]) if status_col else ""
+            bucket = _map_status_bucket(status_raw)
+            if bucket not in DB_STATUS_COLS:
+                continue
+            if cabang not in matrix:
+                matrix[cabang] = _empty_counts(DB_STATUS_COLS)
+            matrix[cabang][bucket] += 1
+
+        rows_out = []
+        grand = _empty_counts(DB_STATUS_COLS)
+        grand["Grand Total"] = 0
+        for cabang in sorted(matrix.keys(), key=lambda c: c.lower()):
+            counts = matrix[cabang]
+            total = sum(counts[c] for c in DB_STATUS_COLS)
+            row_obj = {"Cabang": cabang, **counts, "Grand Total": total}
+            rows_out.append(row_obj)
+            for c in DB_STATUS_COLS:
+                grand[c] += counts[c]
+            grand["Grand Total"] += total
+
+        return {"rows": rows_out, "grand_total": grand, "status_options": status_options}
+
+    # OTS table: LT group -> Cabang -> UN* counts
+    groups_map: Dict[str, Dict[str, Dict[str, int]]] = {}
+    for _, row in filtered.iterrows():
+        status_raw = str(row[status_col]) if status_col else ""
+        bucket = _map_status_bucket(status_raw)
+        if bucket not in OTS_STATUS_COLS:
+            continue
+        lt_label = _normalize_lt_label(str(row[lt_col]) if lt_col else "")
+        cabang = str(row[cabang_col]).strip() if cabang_col else "Unknown"
+        if not cabang:
+            cabang = "Unknown"
+        groups_map.setdefault(lt_label, {})
+        if cabang not in groups_map[lt_label]:
+            groups_map[lt_label][cabang] = _empty_counts(OTS_STATUS_COLS)
+        groups_map[lt_label][cabang][bucket] += 1
+
+    groups_out = []
+    grand = _empty_counts(OTS_STATUS_COLS)
+    grand["Grand Total"] = 0
+    for lt_label in sorted(groups_map.keys(), key=_lt_sort_key):
+        cities = []
+        group_counts = _empty_counts(OTS_STATUS_COLS)
+        group_total = 0
+        for cabang in sorted(groups_map[lt_label].keys(), key=lambda c: c.lower()):
+            counts = groups_map[lt_label][cabang]
+            total = sum(counts[c] for c in OTS_STATUS_COLS)
+            cities.append({"Cabang": cabang, **counts, "Grand Total": total})
+            for c in OTS_STATUS_COLS:
+                group_counts[c] += counts[c]
+                grand[c] += counts[c]
+            group_total += total
+            grand["Grand Total"] += total
+        groups_out.append({
+            "lt": lt_label,
+            "cities": cities,
+            "metrics": {**group_counts, "Grand Total": group_total},
+        })
+
+    return {"groups": groups_out, "grand_total": grand, "status_options": status_options}
+
+
+@app.post("/upload-kiriman-yes")
+async def upload_kiriman_yes(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+
+        try:
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
+        except Exception:
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", keep_default_na=False,
+                )
+            except UnicodeDecodeError:
+                df = pd.read_csv(
+                    io.BytesIO(content), dtype=str, sep=None,
+                    engine="python", encoding="latin1", keep_default_na=False,
+                )
+
+        df.columns = [str(c).strip() for c in df.columns]
+        df = df.fillna("")
+
+        KIRIMAN_YES_DIR.mkdir(parents=True, exist_ok=True)
+        if KIRIMAN_YES_FILE.exists():
+            archive_dir = KIRIMAN_YES_DIR / "archive"
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            shutil.move(str(KIRIMAN_YES_FILE), str(archive_dir / f"kiriman_yes_data_{ts}.csv"))
+
+        df.to_csv(KIRIMAN_YES_FILE, index=False)
+
+        meta_path = KIRIMAN_YES_FILE.parent / (KIRIMAN_YES_FILE.name + ".meta")
+        with open(meta_path, "w") as mf:
+            json.dump(
+                {
+                    "original_filename": file.filename,
+                    "uploaded_by": current_user.email,
+                    "timestamp": datetime.now().isoformat(),
+                },
+                mf,
+            )
+
+        with open(KIRIMAN_YES_DIR / "upload_log.jsonl", "a") as lf:
+            lf.write(
+                json.dumps(
+                    {
+                        "filename": "kiriman_yes_data.csv",
+                        "original_filename": file.filename,
+                        "uploaded_by": current_user.email,
+                        "timestamp": datetime.now().isoformat(),
+                    }
+                )
+                + "\n"
+            )
+
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Database Kiriman Yes ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+
+        return {
+            "message": "Database Kiriman Yes uploaded successfully",
+            "filename": file.filename,
+            "saved_as": str(KIRIMAN_YES_FILE),
+            "rows": len(df),
+            "user": current_user.email,
+        }
+
+    except Exception as e:
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"Error in upload_kiriman_yes: {e}")
+        with open("backend_error.log", "a") as lf:
+            lf.write(f"\n[{datetime.now()}] Error upload_kiriman_yes: {str(e)}\n{error_msg}\n")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.get("/download/kiriman-yes")
+async def download_kiriman_yes(current_user: User = Depends(get_current_active_user)):
+    if not KIRIMAN_YES_FILE.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="File Kiriman Yes belum tersedia. Upload terlebih dahulu.",
+        )
+    return FileResponse(
+        path=str(KIRIMAN_YES_FILE),
+        media_type="text/csv",
+        filename="database_kiriman_yes.csv",
+    )
+
+
+@app.get("/api/kiriman-yes/status-pod")
+async def get_kiriman_yes_status_pod(current_user: User = Depends(get_current_active_user)):
+    df = _read_kiriman_yes_df()
+    if df.empty:
+        return []
+    status_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["status_pod"])
+    if not status_col:
+        return []
+    return sorted(
+        {str(v).strip() for v in df[status_col].tolist() if str(v).strip()},
+        key=lambda x: x.lower(),
+    )
+
+
+@app.get("/api/kiriman-yes/pivot")
+async def get_kiriman_yes_pivot(
+    table: str = "database",
+    status_pod: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    table_key = (table or "database").strip().lower()
+    if table_key not in ("database", "ots"):
+        raise HTTPException(status_code=400, detail="table harus 'database' atau 'ots'")
+    try:
+        return _build_kiriman_yes_pivot(table=table_key, status_pod=status_pod)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal membangun pivot: {str(e)}")
+
+
+@app.post("/upload-all-shipment-master-inbound")
+async def upload_all_shipment_master_inbound(
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+        saved_path = _save_all_shipment_upload(content, "master_inbound", file.filename)
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Master Data Inbound ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+        return {
+            "message": "Master Data Inbound uploaded successfully",
+            "filename": file.filename,
+            "saved_as": str(saved_path),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+@app.post("/upload-all-shipment-template/{kind}")
+async def upload_all_shipment_template(
+    kind: str,
+    request: Request,
+    file: UploadFile = File(...),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    kind_key = (kind or "").strip().lower()
+    if kind_key not in ALL_SHIPMENT_TEMPLATE_KINDS:
+        raise HTTPException(
+            status_code=400,
+            detail="kind harus 'all_inbound_ctc', 'inbound', atau 'outstanding'",
+        )
+
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    label_map = {
+        "all_inbound_ctc": "All Inbound & CTC",
+        "inbound": "Inbound",
+        "outstanding": "Outstanding",
+    }
+    label = label_map[kind_key]
+    stem = ALL_SHIPMENT_TEMPLATE_KINDS[kind_key]
+
+    try:
+        await file.seek(0)
+        content = await file.read()
+        saved_path = _save_all_shipment_upload(content, stem, file.filename)
+        create_notification(
+            session,
+            title="Upload Success",
+            message=f"Template {label} ({file.filename}) uploaded successfully.",
+            type="success",
+            user_id=current_user.id,
+        )
+        return {
+            "message": f"Template {label} uploaded successfully",
+            "kind": kind_key,
+            "filename": file.filename,
+            "saved_as": str(saved_path),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+

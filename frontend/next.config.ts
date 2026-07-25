@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   // reactCompiler: true, // Commenting out to avoid potential type issues if experimental
+  allowedDevOrigins: ["192.168.1.33", "localhost", "127.0.0.1"],
 
   async rewrites() {
     return [

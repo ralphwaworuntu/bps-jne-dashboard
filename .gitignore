@@ -22,6 +22,11 @@ backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
 
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
 # Node / Next.js
 frontend/node_modules/
 frontend/.next/
@@ -37,4 +42,3 @@ frontend/build/
 # Keys / certs
 *.pem
 *.key
-

@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from 'framer-motion';
-import { ArrowLeft, FileSpreadsheet, Database, FolderTree, Download } from 'lucide-react';
+import { ArrowLeft, FileSpreadsheet, Database, FolderTree, Download, Package, BarChart3 } from 'lucide-react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
 import { API_URL } from '../../../../config';
@@ -135,7 +135,7 @@ export default function FirstmilePageV2() {
                     <p className="text-muted-foreground mt-2">Upload raw Excel data to automatically clean and filter based on strict business rules.</p>
                 </header>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
                     {/* OPTION 1: All Database */}
                     <div className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 shadow-sm hover:shadow-lg transition-all">
@@ -232,6 +232,64 @@ export default function FirstmilePageV2() {
                                     </p>
                                     <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg w-fit border border-emerald-100">
                                         View Data & Download
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </Link>
+
+                    {/* OPTION 4: Database SMU */}
+                    <Link href="/dashboard/v2/firstmile/database-smu">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Package className="w-32 h-32 text-blue-600" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-blue-50 w-fit rounded-2xl mb-6">
+                                    <Package className="w-8 h-8 text-blue-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">Database SMU</h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Upload & kelola data SMU Firstmile.
+                                    </p>
+                                    <div className="flex items-center gap-2 text-sm font-medium text-blue-600 bg-blue-50 px-4 py-2 rounded-lg w-fit border border-blue-100">
+                                        View Data & Upload
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </Link>
+
+                    {/* OPTION 5: Report Firstmile */}
+                    <Link href="/dashboard/v2/firstmile/report">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <BarChart3 className="w-32 h-32 text-teal-600" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-teal-50 w-fit rounded-2xl mb-6">
+                                    <BarChart3 className="w-8 h-8 text-teal-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">Report Firstmile</h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Upload master data & laporan LT dengan filter Service per tabel.
+                                    </p>
+                                    <div className="flex items-center gap-2 text-sm font-medium text-teal-600 bg-teal-50 px-4 py-2 rounded-lg w-fit border border-teal-100">
+                                        View Report
                                     </div>
                                 </div>
                             </div>

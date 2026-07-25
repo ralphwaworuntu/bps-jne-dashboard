@@ -1,14 +1,13 @@
 "use client";
 
 import { motion } from 'framer-motion';
-import { Database, FolderTree, FileText, ArrowLeft, ShieldAlert, Download, Loader2, Package, CalendarClock } from 'lucide-react';
+import { Database, FolderTree, FileText, ArrowLeft, ShieldAlert, Download, Loader2, Package, CalendarClock, MapPinned, PackageCheck } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
 import { API_URL } from '../../../../config';
 
 export default function LastmilePageV2() {
-    const [isDownloadingAllShipment, setIsDownloadingAllShipment] = useState(false);
     const [isDownloadingOts, setIsDownloadingOts] = useState(false);
     const [isDownloadingTransit, setIsDownloadingTransit] = useState(false);
     const [isDownloadingPotensiClaim, setIsDownloadingPotensiClaim] = useState(false);
@@ -20,8 +19,11 @@ export default function LastmilePageV2() {
                 const res = await fetch(`${API_URL}/system-info`);
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.lastmile_last_update) {
-                        const d = new Date(data.lastmile_last_update);
+                    const ts =
+                        data.all_shipment_master_inbound_last_update ||
+                        data.lastmile_last_update;
+                    if (ts) {
+                        const d = new Date(ts);
                         setLastUpdateAllShipment(
                             d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) +
                             ' • ' +
@@ -35,14 +37,6 @@ export default function LastmilePageV2() {
         };
         fetchInfo();
     }, []);
-
-    const handleDownloadAllShipment = async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        const token = localStorage.getItem('token');
-        // Direct stream download — no blob buffering for large files
-        window.open(`${API_URL}/download/lastmile?token=${token}`, '_blank');
-    };
-
 
     const handleDownloadOts = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -194,49 +188,39 @@ export default function LastmilePageV2() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
 
                     {/* All Shipment */}
-                    <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
-                    >
-                        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <Package className="w-32 h-32 text-indigo-600" />
-                        </div>
-
-                        <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
-                            <div className="p-4 bg-indigo-50 w-fit rounded-2xl mb-6">
-                                <Package className="w-8 h-8 text-indigo-600" />
+                    <Link href="/dashboard/v2/lastmile/all-shipment">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Package className="w-32 h-32 text-indigo-600" />
                             </div>
 
-                            <div>
-                                <h2 className="text-2xl font-bold text-foreground mb-2">All Shipment</h2>
-                                <p className="text-muted-foreground mb-4">
-                                    Database lengkap dari seluruh kiriman Lastmile.
-                                </p>
-
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-5">
-                                    <CalendarClock className="w-3.5 h-3.5" />
-                                    <span>Data Update : {lastUpdateAllShipment}</span>
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-indigo-50 w-fit rounded-2xl mb-6">
+                                    <Package className="w-8 h-8 text-indigo-600" />
                                 </div>
 
-                                <button
-                                    onClick={handleDownloadAllShipment}
-                                    disabled={isDownloadingAllShipment}
-                                    className="flex items-center gap-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 px-5 py-2.5 rounded-xl transition-colors"
-                                >
-                                    {isDownloadingAllShipment ? (
-                                        <>
-                                            <Loader2 className="w-4 h-4 animate-spin" /> Sedang Mengunduh...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Download className="w-4 h-4" /> Download All Shipment
-                                        </>
-                                    )}
-                                </button>
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">All Shipment</h2>
+                                    <p className="text-muted-foreground mb-4">
+                                        Database lengkap dari seluruh kiriman Lastmile.
+                                    </p>
+
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-5">
+                                        <CalendarClock className="w-3.5 h-3.5" />
+                                        <span>Data Update : {lastUpdateAllShipment}</span>
+                                    </div>
+
+                                    <div className="flex w-fit items-center gap-2 text-sm font-medium text-indigo-600 bg-indigo-50 px-5 py-2.5 rounded-xl border border-indigo-200">
+                                        Lihat Database <Database className="w-4 h-4 ml-1" />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </motion.div>
+                        </motion.div>
+                    </Link>
 
                     {/* Database OTS */}
                     <motion.div
@@ -279,35 +263,33 @@ export default function LastmilePageV2() {
                     </motion.div>
 
                     {/* OPTION 2: Database OTS Cabang */}
-                    <motion.div
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
-                    >
-                        <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
-                            <FolderTree className="w-32 h-32 text-emerald-600" />
-                        </div>
-
-                        <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
-                            <div className="p-4 bg-emerald-50 w-fit rounded-2xl mb-6">
-                                <FolderTree className="w-8 h-8 text-emerald-600" />
+                    <Link href="/dashboard/v2/lastmile/ots-cabang">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <FolderTree className="w-32 h-32 text-emerald-600" />
                             </div>
 
-                            <div>
-                                <h2 className="text-2xl font-bold text-foreground mb-2">Database OTS Cabang</h2>
-                                <p className="text-muted-foreground mb-6">
-                                    Branch-specific OTS data with granular breakdown and regional performance tracking.
-                                </p>
-                                <Link
-                                    href="/dashboard/v2/lastmile/ots-cabang"
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="flex w-fit items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-5 py-2.5 rounded-xl transition-colors border border-emerald-200"
-                                >
-                                    Lihat Database <Database className="w-4 h-4 ml-1" />
-                                </Link>
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-emerald-50 w-fit rounded-2xl mb-6">
+                                    <FolderTree className="w-8 h-8 text-emerald-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">Database OTS Cabang</h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Branch-specific OTS data with granular breakdown and regional performance tracking.
+                                    </p>
+                                    <div className="flex w-fit items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 px-5 py-2.5 rounded-xl border border-emerald-200">
+                                        Lihat Database <Database className="w-4 h-4 ml-1" />
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </motion.div>
+                        </motion.div>
+                    </Link>
 
                     {/* OPTION 3: Database Transit Manifest */}
                     <motion.div
@@ -386,6 +368,68 @@ export default function LastmilePageV2() {
                             </div>
                         </div>
                     </motion.div>
+
+                    {/* OPTION 5: Cakupan Area Delivery KOE */}
+                    <Link href="/dashboard/v2/lastmile/cakupan-area-delivery">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <MapPinned className="w-32 h-32 text-orange-600" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-orange-50 w-fit rounded-2xl mb-6">
+                                    <MapPinned className="w-8 h-8 text-orange-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">
+                                        Cakupan Area Delivery KOE
+                                    </h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Master cakupan area delivery — upload & lihat data kecamatan/cabang.
+                                    </p>
+                                    <div className="flex items-center gap-2 text-sm font-medium text-orange-600 bg-orange-50 px-4 py-2 rounded-lg w-fit border border-orange-100">
+                                        View Data & Upload
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </Link>
+
+                    {/* OPTION 6: Database Kiriman Yes */}
+                    <Link href="/dashboard/v2/lastmile/database-kiriman-yes">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <PackageCheck className="w-32 h-32 text-emerald-600" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-emerald-50 w-fit rounded-2xl mb-6">
+                                    <PackageCheck className="w-8 h-8 text-emerald-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">
+                                        Database Kiriman Yes
+                                    </h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Pivot DATABASE &amp; OTS per Cabang dengan filter STATUS POD.
+                                    </p>
+                                    <div className="flex items-center gap-2 text-sm font-medium text-emerald-600 bg-emerald-50 px-4 py-2 rounded-lg w-fit border border-emerald-100">
+                                        View Data & Upload
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </Link>
 
                 </div>
             </div>
