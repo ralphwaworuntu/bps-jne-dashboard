@@ -1,0 +1,61 @@
+
+[2026-03-14 12:17:20.549608] Background CCC Error (all_shipment): [Errno 2] No such file or directory: 'uploads\\lastmile\\allshipment_lastmile.xlsx'
+Traceback (most recent call last):
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 253, in process_ccc_background
+    wb = openpyxl.load_workbook(str(LASTMILE_FILE))
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\openpyxl\reader\excel.py", line 346, in load_workbook
+    reader = ExcelReader(filename, read_only, keep_vba,
+                         data_only, keep_links, rich_text)
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\openpyxl\reader\excel.py", line 123, in __init__
+    self.archive = _validate_archive(fn)
+                   ~~~~~~~~~~~~~~~~~^^^^
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\openpyxl\reader\excel.py", line 95, in _validate_archive
+    archive = ZipFile(filename, 'r')
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\zipfile\__init__.py", line 1453, in __init__
+    self.fp = io.open(file, filemode)
+              ~~~~~~~^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'uploads\\lastmile\\allshipment_lastmile.xlsx'
+
+
+[2026-03-14 16:24:50.170744] Background CCC Error (all_shipment): 
+Traceback (most recent call last):
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 246, in process_ccc_background
+    df_apex = pd.read_excel(str(MASTER_DATA_FILE))
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\pandas\io\excel\_base.py", line 508, in read_excel
+    data = io.parse(
+        sheet_name=sheet_name,
+    ...<21 lines>...
+        dtype_backend=dtype_backend,
+    )
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\pandas\io\excel\_base.py", line 1616, in parse
+    return self._reader.parse(
+           ~~~~~~~~~~~~~~~~~~^
+        sheet_name=sheet_name,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    ...<17 lines>...
+        **kwds,
+        ^^^^^^^
+    )
+    ^
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\pandas\io\excel\_base.py", line 778, in parse
+    data = self.get_sheet_data(sheet, file_rows_needed)
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\pandas\io\excel\_openpyxl.py", line 615, in get_sheet_data
+    for row_number, row in enumerate(sheet.rows):
+                           ~~~~~~~~~^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\openpyxl\worksheet\_read_only.py", line 85, in _cells_by_row
+    for idx, row in parser.parse():
+                    ~~~~~~~~~~~~^^
+  File "E:\BPS JNE DASHBOARD\.venv\Lib\site-packages\openpyxl\worksheet\_reader.py", line 156, in parse
+    for _, element in it:
+                      ^^
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\xml\etree\ElementTree.py", line 1248, in iterator
+    data = source.read(16 * 1024)
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\zipfile\__init__.py", line 1097, in read
+    data = self._read1(n)
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\zipfile\__init__.py", line 1165, in _read1
+    data += self._read2(n - len(data))
+            ~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\zipfile\__init__.py", line 1200, in _read2
+    raise EOFError
+EOFError
+

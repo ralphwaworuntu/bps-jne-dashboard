@@ -1,0 +1,2 @@
+src/app/dashboard/v2/firstmile/ots-cabang/page.tsx(185,29): error TS2322: Type '{ title: string; count: number; icon: ForwardRefExoticComponent<Omit<LucideProps, "ref"> & RefAttributes<SVGSVGElement>>; href: string; colorClass: string; subtext: string; className: string; }' is not assignable to type 'IntrinsicAttributes & StatsCardProps'.
+  Property 'className' does not exist on type 'IntrinsicAttributes & StatsCardProps'.
