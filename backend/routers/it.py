@@ -39,7 +39,7 @@ SECTION_ROLES: list[RoleOption] = [
     RoleOption(
         section="ALC",
         role="Admin ALC",
-        description="Managemen CTC",
+        description="Managemen CTC, Data Cabang/Agen, Form Transfer, Resume, Penjualan, Delivery, COD, Project, By. Jemput, By. Return, Data GA, Master Data ALC",
     ),
     RoleOption(
         section="Sales",

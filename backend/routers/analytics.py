@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from utils.analytics_helper import load_analytics_cache
+from auth import get_current_active_user
+from models import User
 
 router = APIRouter(
     prefix="/analytics",
@@ -8,7 +10,10 @@ router = APIRouter(
 )
 
 @router.get("/{category}")
-def get_analytics(category: str):
+def get_analytics(
+    category: str,
+    current_user: User = Depends(get_current_active_user),
+):
     """
     Get analytics stats for a specific category (firstmile, lastmile).
     """

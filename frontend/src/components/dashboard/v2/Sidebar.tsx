@@ -12,13 +12,21 @@ import {
     X,
     AlertTriangle,
     CheckCircle,
-    MapPin,
     DollarSign,
     Briefcase,
     Wallet,
     ReceiptText,
     ScrollText,
     UserCog,
+    FileText,
+    ClipboardList,
+    ShoppingCart,
+    FolderKanban,
+    Package,
+    Undo2,
+    Boxes,
+    Building2,
+    Database,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -59,6 +67,7 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                     src="/jne_logo.png"
                                     alt="JNE Logo"
                                     fill
+                                    sizes="120px"
                                     className="object-contain"
                                     priority
                                 />
@@ -69,6 +78,7 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                     src="/jne_logo.png"
                                     alt="JNE Logo"
                                     fill
+                                    sizes="40px"
                                     className="object-contain"
                                     priority
                                 />
@@ -148,23 +158,23 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                 </div>
                             </Link>
 
-                            <Link href="/dashboard/v2/geotagging" className="group cursor-pointer">
-                                <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${isActive('/dashboard/v2/geotagging') ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
-                                    <MapPin className={`size-6 shrink-0 transition-all duration-300 ${isActive('/dashboard/v2/geotagging') ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
-                                    {!isCollapsed && (
-                                        <span className={`font-medium transition-all duration-300 ${isActive('/dashboard/v2/geotagging') ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
-                                            Geotaging
-                                        </span>
-                                    )}
-                                </div>
-                            </Link>
-
                             <Link href="/dashboard/v2/daily-issue" className="group cursor-pointer">
                                 <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${isActive('/dashboard/v2/daily-issue') ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
                                     <AlertTriangle className={`size-6 shrink-0 transition-all duration-300 ${isActive('/dashboard/v2/daily-issue') ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
                                     {!isCollapsed && (
                                         <span className={`font-medium transition-all duration-300 ${isActive('/dashboard/v2/daily-issue') ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
                                             Issue Harian
+                                        </span>
+                                    )}
+                                </div>
+                            </Link>
+
+                            <Link href="/dashboard/v2/master-data" className="group cursor-pointer">
+                                <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${isActive('/dashboard/v2/master-data') ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
+                                    <Database className={`size-6 shrink-0 transition-all duration-300 ${isActive('/dashboard/v2/master-data') ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
+                                    {!isCollapsed && (
+                                        <span className={`font-medium transition-all duration-300 ${isActive('/dashboard/v2/master-data') ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
+                                            Master Data
                                         </span>
                                     )}
                                 </div>
@@ -195,16 +205,34 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                     <div className="flex flex-col gap-4">
                         {!isCollapsed && <h3 className="font-medium text-sm text-secondary px-2">ALC</h3>}
                         <div className="flex flex-col gap-1">
-                            <Link href="/dashboard/v2/alc/managemen-ctc" className="group cursor-pointer">
-                                <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${pathname?.startsWith('/dashboard/v2/alc/managemen-ctc') ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
-                                    <Briefcase className={`size-6 shrink-0 transition-all duration-300 ${pathname?.startsWith('/dashboard/v2/alc/managemen-ctc') ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
-                                    {!isCollapsed && (
-                                        <span className={`font-medium transition-all duration-300 ${pathname?.startsWith('/dashboard/v2/alc/managemen-ctc') ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
-                                            Managemen CTC
-                                        </span>
-                                    )}
-                                </div>
-                            </Link>
+                            {[
+                                { href: '/dashboard/v2/alc/managemen-ctc', label: 'Managemen CTC', Icon: Briefcase },
+                                { href: '/dashboard/v2/alc/data-cabang-agen', label: 'Data Cabang/Agen', Icon: Building2 },
+                                { href: '/dashboard/v2/alc/form-transfer', label: 'Form Transfer', Icon: FileText },
+                                { href: '/dashboard/v2/alc/resume', label: 'Resume', Icon: ClipboardList },
+                                { href: '/dashboard/v2/alc/penjualan', label: 'Penjualan', Icon: ShoppingCart },
+                                { href: '/dashboard/v2/alc/delivery', label: 'Delivery', Icon: Truck },
+                                { href: '/dashboard/v2/alc/cod', label: 'COD', Icon: Wallet },
+                                { href: '/dashboard/v2/alc/project', label: 'Project', Icon: FolderKanban },
+                                { href: '/dashboard/v2/alc/by-jemput', label: 'By. Jemput', Icon: Package },
+                                { href: '/dashboard/v2/alc/by-return', label: 'By. Return', Icon: Undo2 },
+                                { href: '/dashboard/v2/alc/data-ga', label: 'Data GA', Icon: Boxes },
+                                { href: '/dashboard/v2/alc/master-data-alc', label: 'Master Data ALC', Icon: Database },
+                            ].map(({ href, label, Icon }) => {
+                                const active = pathname?.startsWith(href);
+                                return (
+                                    <Link key={href} href={href} className="group cursor-pointer">
+                                        <div className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${active ? 'bg-muted' : 'bg-white hover:bg-muted'} ${isCollapsed ? 'justify-center' : ''}`}>
+                                            <Icon className={`size-6 shrink-0 transition-all duration-300 ${active ? 'text-foreground' : 'text-secondary group-hover:text-foreground'}`} />
+                                            {!isCollapsed && (
+                                                <span className={`font-medium transition-all duration-300 ${active ? 'font-semibold text-foreground' : 'text-secondary group-hover:text-foreground'}`}>
+                                                    {label}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </Link>
+                                );
+                            })}
                         </div>
                     </div>
 

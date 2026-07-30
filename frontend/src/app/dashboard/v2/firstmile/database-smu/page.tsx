@@ -67,7 +67,7 @@ export default function DatabaseSMUPage() {
                 fetch(`${API_URL}/api/smu-firstmile`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
-                fetch(`${API_URL}/system-info`),
+                fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
             ]);
             if (dataRes.ok) {
                 const json: SMURow[] = await dataRes.json();

@@ -47,7 +47,7 @@ export default function UploadPage() {
     // Auth & System Info
     const fetchSystemInfo = async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const res = await fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
             if (res.ok) {
                 const data = await res.json();
 

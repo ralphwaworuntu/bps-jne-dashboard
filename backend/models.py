@@ -120,6 +120,50 @@ class FinanceUpload(SQLModel, table=True):
     stored_path: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+class AlcPenjualanUpload(SQLModel, table=True):
+    """Upload data penjualan ALC (SCO / APEX) dikelompokkan per bulan & tahun."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(index=True)  # SCO | APEX
+    month: int = Field(index=True)
+    year: int = Field(index=True)
+    original_filename: str
+    stored_path: str
+    parsed_path: str
+    row_count: int = Field(default=0)
+    uploaded_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    uploaded_by_email: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class OpsMasterDataKind(SQLModel, table=True):
+    """Definisi jenis Master Data (bawaan + custom dari UI admin)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(index=True, unique=True)
+    label: str
+    description: str = ""
+    tab_label: str = ""
+    color_class: str = "blue"  # blue|emerald|orange|purple|rose|cyan
+    columns_json: str = "[]"  # JSON array of column headers
+    is_builtin: bool = Field(default=False, index=True)
+    card_group: Optional[str] = Field(default=None, index=True)  # e.g. "lazada"
+    sort_order: int = Field(default=0, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class OpsMasterDataUpload(SQLModel, table=True):
+    """Upload master data Operations (Coding Nasional / Coding NTT / Cakupan Delivery KOE)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(index=True)  # slug dari OpsMasterDataKind.kind
+    original_filename: str
+    stored_path: str
+    parsed_path: str
+    row_count: int = Field(default=0)
+    uploaded_by_user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
+    uploaded_by_email: Optional[str] = None
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class HCCandidateApplication(SQLModel, table=True):
     """Pengajuan calon karyawan (pipeline rekrutmen)."""
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -305,15 +349,24 @@ class SalesInvoiceRead(SQLModel):
 
 class Notification(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="user.id", nullable=True) # Nullable for global notifications? Or specific user. Let's make it specific for now based on plan, but plan said maybe global. Let's assume nullable = Global/System.
+    user_id: Optional[int] = Field(default=None, foreign_key="user.id", index=True)
     title: str
     message: str
-    type: str = Field(default="info") # success, error, info, warning
+    type: str = Field(default="info")  # success, error, info, warning
     is_read: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    
+
     user: Optional[User] = Relationship(back_populates="notifications")
 
+
+class NotificationRead(SQLModel):
+    id: int
+    user_id: Optional[int] = None
+    title: str
+    message: str
+    type: str
+    is_read: bool
+    created_at: datetime
 
 # --- IT / User Management ---
 

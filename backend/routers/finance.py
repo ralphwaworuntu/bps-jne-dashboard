@@ -11,6 +11,8 @@ from sqlmodel import Session, select
 from auth import get_current_active_user
 from database import get_session
 from models import FinanceUpload, User
+from utils.excel_worker import run_in_excel_worker
+from utils.finance_parser import read_parsed_cache, write_parsed_cache
 
 router = APIRouter(prefix="/finance", tags=["finance"])
 
@@ -69,6 +71,64 @@ def download_finance_file(
     )
 
 
+@router.get("/parsed/{upload_id}")
+async def get_parsed_finance_file(
+    upload_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Hasil parse JSON (cache). Dibangun sekali di worker saat belum ada —
+    tanpa mengubah file Excel asli.
+    """
+    rec = session.get(FinanceUpload, upload_id)
+    if not rec or rec.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="File tidak ditemukan")
+    path = Path(rec.stored_path)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Berkas tidak ada di server")
+
+    cached = read_parsed_cache(path)
+    if cached is not None:
+        return {
+            "id": rec.id,
+            "kind": rec.kind,
+            "original_filename": rec.original_filename,
+            "created_at": rec.created_at.isoformat(),
+            "cached": True,
+            "data": cached,
+        }
+
+    # PDF rekening: tidak di-parse (sama seperti frontend)
+    if rec.kind == "rekening_koran" and path.suffix.lower() == ".pdf":
+        return {
+            "id": rec.id,
+            "kind": rec.kind,
+            "original_filename": rec.original_filename,
+            "created_at": rec.created_at.isoformat(),
+            "cached": False,
+            "data": {"rows": [], "matchedHeaders": 0, "skipped": "pdf"},
+        }
+
+    try:
+        await run_in_excel_worker(write_parsed_cache, path, rec.kind)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gagal parse file: {e!s}") from e
+
+    cached = read_parsed_cache(path)
+    if cached is None:
+        raise HTTPException(status_code=500, detail="Cache parse gagal dibuat")
+
+    return {
+        "id": rec.id,
+        "kind": rec.kind,
+        "original_filename": rec.original_filename,
+        "created_at": rec.created_at.isoformat(),
+        "cached": False,
+        "data": cached,
+    }
+
+
 def _save_upload(
     session: Session,
     user: User,
@@ -109,6 +169,19 @@ def _save_upload(
     return rec
 
 
+async def _parse_after_upload(rec: FinanceUpload) -> None:
+    path = Path(rec.stored_path)
+    if not path.is_file():
+        return
+    if rec.kind == "rekening_koran" and path.suffix.lower() == ".pdf":
+        return
+    try:
+        await run_in_excel_worker(write_parsed_cache, path, rec.kind)
+    except Exception as e:
+        # Upload tetap sukses; parse bisa diulang via GET /parsed
+        print(f"WARN finance parse after upload failed: {e}")
+
+
 @router.post("/upload/rekening-koran")
 async def upload_rekening_koran(
     file: UploadFile = File(...),
@@ -116,6 +189,7 @@ async def upload_rekening_koran(
     current_user: User = Depends(get_current_active_user),
 ):
     rec = _save_upload(session, current_user, file, "rekening_koran", REKENING_ALLOWED)
+    await _parse_after_upload(rec)
     return {
         "id": rec.id,
         "original_filename": rec.original_filename,
@@ -131,6 +205,7 @@ async def upload_bukti_transaksi(
     current_user: User = Depends(get_current_active_user),
 ):
     rec = _save_upload(session, current_user, file, "bukti_transaksi", BUKTI_ALLOWED)
+    await _parse_after_upload(rec)
     return {
         "id": rec.id,
         "original_filename": rec.original_filename,

@@ -106,7 +106,7 @@ export default function DatabaseKirimanYesPage() {
 
     const fetchMeta = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const res = await fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
             if (!res.ok) return;
             const info = await res.json();
             if (info.kiriman_yes_last_update) {

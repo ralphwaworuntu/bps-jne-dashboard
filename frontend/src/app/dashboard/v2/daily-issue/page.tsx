@@ -7,13 +7,18 @@ import { ArrowLeft, Save, Upload, AlertCircle, CheckCircle, Plus, X, Maximize2 }
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
-import { API_URL } from '../../../../config';
+import { API_URL, mediaUrl } from '../../../../config';
+import { useDashboard } from '@/context/DashboardContext';
 
 export default function DailyIssuePageV2() {
     const router = useRouter();
-    const [user, setUser] = useState<any>(null);
+    const { user } = useDashboard();
     const [viewMode, setViewMode] = useState<'list' | 'form' | 'detail'>('list');
     const [issues, setIssues] = useState<any[]>([]);
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(50);
+    const [totalIssues, setTotalIssues] = useState(0);
+    const [issuePages, setIssuePages] = useState(0);
     const [selectedIssue, setSelectedIssue] = useState<any>(null);
 
     // Lightbox State
@@ -42,7 +47,8 @@ export default function DailyIssuePageV2() {
     const [divisi, setDivisi] = useState('');
     const [description, setDescription] = useState('');
     const [processType, setProcessType] = useState('Lastmile');
-    const [awb, setAwb] = useState('');
+    const [awbTokens, setAwbTokens] = useState<string[]>([]);
+    const [awbDraft, setAwbDraft] = useState('');
     const [internalConstraint, setInternalConstraint] = useState('');
     const [externalConstraint, setExternalConstraint] = useState('');
     const [action, setAction] = useState('');
@@ -50,6 +56,31 @@ export default function DailyIssuePageV2() {
     const [dueDate, setDueDate] = useState('');
     const [files, setFiles] = useState<File[]>([]);
     const [status, setStatus] = useState('Open');
+
+    const parseAwbTokens = (raw: string) =>
+        String(raw || "")
+            .split(/[,\s]+/)
+            .map((t) => t.trim())
+            .filter(Boolean);
+
+    const commitAwbDraft = (raw?: string) => {
+        const next = String(raw ?? awbDraft).trim();
+        if (!next) {
+            setAwbDraft('');
+            return;
+        }
+        setAwbTokens((prev) => (prev.includes(next) ? prev : [...prev, next]));
+        setAwbDraft('');
+    };
+
+    const removeAwbToken = (token: string) => {
+        setAwbTokens((prev) => prev.filter((t) => t !== token));
+    };
+
+    const awbValue = useMemo(
+        () => [...awbTokens, awbDraft.trim()].filter(Boolean).join(', '),
+        [awbTokens, awbDraft]
+    );
 
     // Memoize previews
     const filePreviews = useMemo(() => {
@@ -91,31 +122,29 @@ export default function DailyIssuePageV2() {
     const selectClass = "w-full bg-white border border-border rounded-xl py-3 px-4 focus:outline-none focus:border-primary transition-colors text-foreground placeholder-muted-foreground";
 
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            router.push('/');
-            return;
-        }
-        fetch(`${API_URL}/users/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(res => res.json())
-            .then(data => setUser(data))
-            .catch(() => router.push('/'));
-
         fetchIssues();
-    }, [router]);
+    }, [page, pageSize]);
 
-    const fetchIssues = async () => {
+    const fetchIssues = async (pageOverride?: number) => {
         const token = localStorage.getItem('token');
         if (!token) return;
         try {
-            const res = await fetch(`${API_URL}/daily-issues/`, {
+            const p = pageOverride ?? page;
+            const params = new URLSearchParams({ page: String(p), limit: String(pageSize) });
+            const res = await fetch(`${API_URL}/daily-issues/?${params}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
                 const data = await res.json();
-                setIssues(data);
+                if (Array.isArray(data)) {
+                    setIssues(data);
+                    setTotalIssues(data.length);
+                    setIssuePages(1);
+                } else {
+                    setIssues(data.items || []);
+                    setTotalIssues(data.total || 0);
+                    setIssuePages(data.pages || 0);
+                }
             }
         } catch (e) {
             console.error("Failed to fetch issues", e);
@@ -139,6 +168,11 @@ export default function DailyIssuePageV2() {
         };
     }, []);
 
+    const availableZonas: string[] = wilayah ? (zonaMapping[wilayah] || []) : [];
+    const allZonaSelected =
+        availableZonas.length > 0 &&
+        availableZonas.every((z) => selectedZonas.includes(z));
+
     const toggleZona = (z: string) => {
         if (selectedZonas.includes(z)) {
             setSelectedZonas(selectedZonas.filter(item => item !== z));
@@ -147,16 +181,35 @@ export default function DailyIssuePageV2() {
         }
     };
 
+    const toggleAllZona = () => {
+        if (!wilayah || availableZonas.length === 0) return;
+        if (allZonaSelected) {
+            setSelectedZonas([]);
+        } else {
+            setSelectedZonas([...availableZonas]);
+        }
+    };
+
     // Populate form
     useEffect(() => {
         if (viewMode === 'form' && selectedIssue) {
             setWilayah(selectedIssue.wilayah);
-            const zones = selectedIssue.zona.split(',').map((z: string) => z.trim());
-            setSelectedZonas(zones);
+            const zonaRaw = String(selectedIssue.zona || "").trim();
+            if (/^all\s*zona$/i.test(zonaRaw)) {
+                setSelectedZonas([...(zonaMapping[selectedIssue.wilayah] || [])]);
+            } else {
+                setSelectedZonas(
+                    zonaRaw
+                        .split(",")
+                        .map((z: string) => z.trim())
+                        .filter(Boolean)
+                );
+            }
             setDivisi(selectedIssue.divisi);
             setDescription(selectedIssue.description);
             setProcessType(selectedIssue.process_type || 'Lastmile');
-            setAwb(selectedIssue.awb || '');
+            setAwbTokens(parseAwbTokens(selectedIssue.awb || ''));
+            setAwbDraft('');
             setInternalConstraint(selectedIssue.internal_constraint || '');
             setExternalConstraint(selectedIssue.external_constraint || '');
             setAction(selectedIssue.action_taken);
@@ -170,7 +223,8 @@ export default function DailyIssuePageV2() {
             setDivisi('');
             setDescription('');
             setProcessType('Lastmile');
-            setAwb('');
+            setAwbTokens([]);
+            setAwbDraft('');
             setInternalConstraint('');
             setExternalConstraint('');
             setAction('');
@@ -198,7 +252,7 @@ export default function DailyIssuePageV2() {
 
         const formData = new FormData();
         formData.append('wilayah', wilayah);
-        formData.append('zona', selectedZonas.join(', '));
+        formData.append('zona', allZonaSelected ? 'ALL ZONA' : selectedZonas.join(', '));
         formData.append('divisi', divisi);
         formData.append('description', description);
         formData.append('action_taken', action);
@@ -207,7 +261,7 @@ export default function DailyIssuePageV2() {
         if (internalConstraint) formData.append('internal_constraint', internalConstraint);
         if (externalConstraint) formData.append('external_constraint', externalConstraint);
         formData.append('process_type', processType);
-        if (awb) formData.append('awb', awb);
+        if (awbValue) formData.append('awb', awbValue);
         formData.append('status', status);
 
         files.forEach(f => formData.append('files', f));
@@ -242,7 +296,8 @@ export default function DailyIssuePageV2() {
                 setDivisi('');
                 setDescription('');
                 setProcessType('Lastmile');
-                setAwb('');
+                setAwbTokens([]);
+                setAwbDraft('');
                 setInternalConstraint('');
                 setExternalConstraint('');
                 setAction('');
@@ -259,7 +314,8 @@ export default function DailyIssuePageV2() {
                 setDivisi('');
                 setDescription('');
                 setProcessType('Lastmile');
-                setAwb('');
+                setAwbTokens([]);
+                setAwbDraft('');
                 setInternalConstraint('');
                 setExternalConstraint('');
                 setAction('');
@@ -436,6 +492,32 @@ export default function DailyIssuePageV2() {
                                     )}
                                 </tbody>
                             </table>
+                            {issuePages > 0 && (
+                                <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-border text-sm text-secondary">
+                                    <span>Total {totalIssues} issue</span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            disabled={page <= 1}
+                                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                                            className="px-3 py-1.5 rounded-lg border border-border bg-white disabled:opacity-50"
+                                        >
+                                            Sebelumnya
+                                        </button>
+                                        <span className="font-medium text-foreground">
+                                            Halaman {page} / {Math.max(issuePages, 1)}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            disabled={page >= issuePages}
+                                            onClick={() => setPage((p) => p + 1)}
+                                            className="px-3 py-1.5 rounded-lg border border-border bg-white disabled:opacity-50"
+                                        >
+                                            Berikutnya
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -513,8 +595,7 @@ export default function DailyIssuePageV2() {
                             {selectedIssue.attachments && selectedIssue.attachments.length > 0 ? (
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                                     {selectedIssue.attachments.map((att: any, idx: number) => {
-                                        const normalizedPath = att.file_path.replace(/\\/g, '/');
-                                        const imageUrl = `${API_URL}/${normalizedPath}`;
+                                        const imageUrl = mediaUrl(att.file_path);
                                         return (
                                             <div
                                                 key={att.id || idx}
@@ -648,11 +729,23 @@ export default function DailyIssuePageV2() {
                             </div>
 
                             <div>
-                                <label className="block text-foreground font-medium mb-2">Zona (Multi-select)</label>
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <label className="block text-foreground font-medium">Zona (Multi-select)</label>
+                                    <label className={`inline-flex items-center gap-2 text-sm ${!wilayah ? 'opacity-50 pointer-events-none' : 'cursor-pointer'}`}>
+                                        <input
+                                            type="checkbox"
+                                            checked={allZonaSelected}
+                                            onChange={toggleAllZona}
+                                            disabled={!wilayah}
+                                            className="size-4 accent-blue-600"
+                                        />
+                                        <span className="font-medium text-foreground">All Zona</span>
+                                    </label>
+                                </div>
                                 <div className={`border border-border rounded-xl p-3 bg-white ${!wilayah ? 'opacity-50 pointer-events-none' : ''}`}>
                                     {wilayah ? (
                                         <div className="flex flex-wrap gap-2">
-                                            {zonaMapping[wilayah]?.map((z: string) => (
+                                            {availableZonas.map((z: string) => (
                                                 <button
                                                     key={z}
                                                     type="button"
@@ -683,7 +776,7 @@ export default function DailyIssuePageV2() {
                                 required
                             >
                                 <option value="" className="text-muted-foreground">Pilih Divisi</option>
-                                {["OUTBOUND", "TRANSIT", "INBOUND", "PIC", "TRACER UNDEL", "SCO", "Pickup"].map(d =>
+                                {["OUTBOUND", "TRANSIT", "INBOUND", "PENERUSAN", "PIC", "TRACER UNDEL", "SCO", "Pickup"].map(d =>
                                     <option key={d} value={d} className="text-foreground">{d}</option>
                                 )}
                             </select>
@@ -703,15 +796,68 @@ export default function DailyIssuePageV2() {
 
                         <div>
                             <label className="block text-foreground font-medium mb-2">Nomor AWB (Opsional)</label>
-                            <input
-                                type="text"
-                                className={selectClass}
-                                value={awb}
-                                onChange={(e) => setAwb(e.target.value)}
-                                placeholder="Contoh: 004112345678"
-                            />
+                            <div
+                                className="flex min-h-[48px] w-full flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 focus-within:border-primary"
+                                onClick={(e) => {
+                                    const input = (e.currentTarget.querySelector('input') as HTMLInputElement | null);
+                                    input?.focus();
+                                }}
+                            >
+                                {awbTokens.map((token) => (
+                                    <span
+                                        key={token}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800"
+                                    >
+                                        {token}
+                                        <button
+                                            type="button"
+                                            onClick={() => removeAwbToken(token)}
+                                            className="rounded p-0.5 hover:bg-amber-200"
+                                            aria-label={`Hapus AWB ${token}`}
+                                        >
+                                            <X className="size-3" />
+                                        </button>
+                                    </span>
+                                ))}
+                                <input
+                                    type="text"
+                                    className="min-w-[160px] flex-1 border-0 bg-transparent py-1 text-sm text-foreground outline-none placeholder:text-muted-foreground"
+                                    value={awbDraft}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (/[,\s]/.test(val)) {
+                                            const parts = val.split(/[,\s]+/);
+                                            const remainder = parts.pop() ?? '';
+                                            parts
+                                                .map((p) => p.trim())
+                                                .filter(Boolean)
+                                                .forEach((p) => {
+                                                    setAwbTokens((prev) =>
+                                                        prev.includes(p) ? prev : [...prev, p]
+                                                    );
+                                                });
+                                            setAwbDraft(remainder);
+                                            return;
+                                        }
+                                        setAwbDraft(val);
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === ' ' || e.key === 'Enter' || e.key === ',') {
+                                            e.preventDefault();
+                                            commitAwbDraft();
+                                            return;
+                                        }
+                                        if (e.key === 'Backspace' && !awbDraft && awbTokens.length > 0) {
+                                            e.preventDefault();
+                                            setAwbTokens((prev) => prev.slice(0, -1));
+                                        }
+                                    }}
+                                    onBlur={() => commitAwbDraft()}
+                                    placeholder={awbTokens.length ? 'AWB berikutnya…' : 'Ketik AWB lalu tekan Spasi'}
+                                />
+                            </div>
                             <p className="text-xs text-muted-foreground mt-2 ml-1">
-                                * Pisahkan AWB dengan tanda koma jika lebih dari 1 AWB
+                                * Tekan Spasi untuk menambahkan AWB berikutnya (otomatis dipisah koma)
                             </p>
                         </div>
 

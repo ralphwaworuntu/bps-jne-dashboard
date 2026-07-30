@@ -60,7 +60,11 @@ export default function Header({
 
     const fetchSystemInfo = async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const token = localStorage.getItem('token');
+            if (!token) return;
+            const res = await fetch(`${API_URL}/system-info`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
             if (res.ok) {
                 const data = await res.json();
                 if (data.master_last_update) setUploadProgress(prev => ({ ...prev, master: true }));
@@ -84,9 +88,21 @@ export default function Header({
     };
 
     useEffect(() => {
-        fetchSystemInfo();
-        const interval = setInterval(fetchSystemInfo, 30000);
-        return () => clearInterval(interval);
+        const tick = () => {
+            if (document.visibilityState === 'visible') {
+                fetchSystemInfo();
+            }
+        };
+        tick();
+        const interval = setInterval(tick, 30000);
+        const onVisibility = () => {
+            if (document.visibilityState === 'visible') fetchSystemInfo();
+        };
+        document.addEventListener('visibilitychange', onVisibility);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', onVisibility);
+        };
     }, []);
 
     const getGlobalStatus = () => {

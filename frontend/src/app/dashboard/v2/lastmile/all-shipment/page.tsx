@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
     ArrowLeft,
+    ClipboardList,
     FileSpreadsheet,
     Inbox,
     Loader2,
@@ -88,7 +89,7 @@ export default function AllShipmentHubPage() {
 
     const fetchMeta = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const res = await fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
             if (!res.ok) return;
             const data = await res.json();
             setCtcRangeStart(data.all_inbound_ctc_range_start ?? null);
@@ -234,7 +235,7 @@ export default function AllShipmentHubPage() {
                 </div>
 
                 {/* Submenu cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
                     <Link href="/dashboard/v2/lastmile/all-shipment/all-inbound-ctc">
                         <motion.div
                             whileHover={{ scale: 1.02 }}
@@ -297,6 +298,29 @@ export default function AllShipmentHubPage() {
                                 </h2>
                                 <p className="text-muted-foreground text-sm">
                                     Lihat data Outstanding.
+                                </p>
+                            </div>
+                        </motion.div>
+                    </Link>
+
+                    <Link href="/dashboard/v2/lastmile/all-shipment/un-runsheet">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative overflow-hidden bg-white border border-border rounded-3xl p-8 cursor-pointer hover:shadow-lg transition-all h-full"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <ClipboardList className="w-28 h-28 text-rose-600" />
+                            </div>
+                            <div className="relative z-10">
+                                <div className="p-4 bg-rose-50 w-fit rounded-2xl mb-6">
+                                    <ClipboardList className="w-8 h-8 text-rose-600" />
+                                </div>
+                                <h2 className="text-xl font-bold text-foreground mb-2">
+                                    UN RUNSHEET
+                                </h2>
+                                <p className="text-muted-foreground text-sm">
+                                    Pivot aging &amp; detail UN RUNSHEET.
                                 </p>
                             </div>
                         </motion.div>

@@ -5404,3 +5404,155 @@ Traceback (most recent call last):
                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'NoneType' object has no attribute 'group'
 
+
+[2026-07-25 13:45:22.719669] Global Error: 1 validation error for User
+hashed_password
+  Field required [type=missing, input_value=UserCreate(email='hacker@...hift=None, password='x'), input_type=UserCreate]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+Traceback (most recent call last):
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 144, in log_requests
+    "all_inbound_ctc_last_update": get_file_time(tpl_ctc),
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 227, in register_user
+    app.include_router(correction_request.router)
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\_py_warnings.py", line 800, in wrapper
+    return arg(*args, **kwargs)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\main.py", line 915, in from_orm
+    return cls.model_validate(obj, update=update)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\main.py", line 830, in model_validate
+    return sqlmodel_validate(
+        cls=cls,
+    ...<4 lines>...
+        update=update,
+    )
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\_compat.py", line 300, in sqlmodel_validate
+    cls.__pydantic_validator__.validate_python(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        use_obj,
+        ^^^^^^^^
+    ...<3 lines>...
+        self_instance=new_obj,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for User
+hashed_password
+  Field required [type=missing, input_value=UserCreate(email='hacker@...hift=None, password='x'), input_type=UserCreate]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+
+
+[2026-07-25 13:46:02.694532] Global Error: 1 validation error for User
+hashed_password
+  Field required [type=missing, input_value=UserCreate(email='hacker@...hift=None, password='x'), input_type=UserCreate]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+Traceback (most recent call last):
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 144, in log_requests
+    "all_inbound_ctc_last_update": get_file_time(tpl_ctc),
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 168, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\base.py", line 144, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\cors.py", line 85, in __call__
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\middleware\exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\middleware\asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 716, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 736, in app
+    await route.handle(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\routing.py", line 290, in handle
+    await self.app(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 115, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\starlette\_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 101, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 355, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<3 lines>...
+    )
+    ^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\fastapi\routing.py", line 243, in run_endpoint_function
+    return await dependant.call(**values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\main.py", line 227, in register_user
+    app.include_router(correction_request.router)
+                  ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ralph\AppData\Local\Python\pythoncore-3.14-64\Lib\_py_warnings.py", line 800, in wrapper
+    return arg(*args, **kwargs)
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\main.py", line 915, in from_orm
+    return cls.model_validate(obj, update=update)
+           ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\main.py", line 830, in model_validate
+    return sqlmodel_validate(
+        cls=cls,
+    ...<4 lines>...
+        update=update,
+    )
+  File "E:\BPS JNE DASHBOARD\backend\venv\Lib\site-packages\sqlmodel\_compat.py", line 300, in sqlmodel_validate
+    cls.__pydantic_validator__.validate_python(
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        use_obj,
+        ^^^^^^^^
+    ...<3 lines>...
+        self_instance=new_obj,
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+pydantic_core._pydantic_core.ValidationError: 1 validation error for User
+hashed_password
+  Field required [type=missing, input_value=UserCreate(email='hacker@...hift=None, password='x'), input_type=UserCreate]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing
+

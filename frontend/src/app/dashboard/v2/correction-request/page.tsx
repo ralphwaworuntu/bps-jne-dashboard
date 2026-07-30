@@ -5,13 +5,13 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Save, Plus, Edit, CheckCircle, XCircle, Upload, Download, Image as ImageIcon, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { API_URL } from '../../../../config';
+import { API_URL, mediaUrl } from '../../../../config';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
+import { useDashboard } from '@/context/DashboardContext';
 
 export default function CorrectionRequestPageV2() {
     const router = useRouter();
-    // Removed internal sidebar/header state
-    const [user, setUser] = useState<any>(null);
+    const { user } = useDashboard();
 
     const [viewMode, setViewMode] = useState<'list' | 'form' | 'detail'>('list');
     const [requests, setRequests] = useState<any[]>([]);
@@ -165,24 +165,9 @@ export default function CorrectionRequestPageV2() {
     const [scoProofs, setScoProofs] = useState<File[]>([]);
     const [bpsProofs, setBpsProofs] = useState<File[]>([]);
 
-    // Auth Check
     useEffect(() => {
-        const token = localStorage.getItem('token');
-        if (!token) {
-            router.push('/login');
-            return;
-        }
-        fetch(`${API_URL}/users/me`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        })
-            .then(res => res.json())
-            .then(data => setUser(data))
-            .catch(() => router.push('/login'));
-
         fetchRequests();
-    }, [router]);
-
-    // Removed internal notification fetching and markAllRead since DashboardLayout handles it
+    }, []);
 
     const fetchRequests = async () => {
         const token = localStorage.getItem('token');
@@ -446,9 +431,9 @@ export default function CorrectionRequestPageV2() {
 
         return matchDate && matchAwb && matchAddress && matchKodeAwal && matchKodeAkhir && matchStatus;
     });
-    const canCreate = user && ['Admin Cabang', 'PIC Cabang', 'Super Admin'].includes(user.role);
-    const canApprove = user && ['Admin SCO', 'Super Admin'].includes(user.role);
-    const canExecute = user && ['Admin BPS', 'Super Admin'].includes(user.role);
+    const canCreate = !!user?.role && ['Admin Cabang', 'PIC Cabang', 'Super Admin'].includes(user.role);
+    const canApprove = !!user?.role && ['Admin SCO', 'Super Admin'].includes(user.role);
+    const canExecute = !!user?.role && ['Admin BPS', 'Super Admin'].includes(user.role);
     const canEdit = user && (canApprove || canExecute); // SCO & BPS can edit
 
     if (!user) return null;
@@ -1006,12 +991,12 @@ export default function CorrectionRequestPageV2() {
                                                     <div className="text-sm font-semibold text-secondary mb-2">Lampiran (Cabang):</div>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                                         {selectedRequest.attachments.filter((a: any) => a.attachment_type === 'branch').map((att: any) => (
-                                                            <a href={`${API_URL}${att.file_path}`} target="_blank" rel="noreferrer" key={att.id}>
+                                                            <a href={mediaUrl(att.file_path)} target="_blank" rel="noreferrer" key={att.id}>
                                                                 <div className="rounded-xl border border-border overflow-hidden bg-muted/30 hover:border-primary transition-colors cursor-pointer relative group">
                                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <ImageIcon className="w-6 h-6 text-white" />
                                                                     </div>
-                                                                    <img src={`${API_URL}${att.file_path}`} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
+                                                                    <img src={mediaUrl(att.file_path)} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
                                                                 </div>
                                                             </a>
                                                         ))}
@@ -1025,12 +1010,12 @@ export default function CorrectionRequestPageV2() {
                                                     <div className="text-sm font-semibold text-secondary mb-2">Bukti Validasi (SCO):</div>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                                         {selectedRequest.attachments.filter((a: any) => a.attachment_type === 'sco').map((att: any) => (
-                                                            <a href={`${API_URL}${att.file_path}`} target="_blank" rel="noreferrer" key={att.id}>
+                                                            <a href={mediaUrl(att.file_path)} target="_blank" rel="noreferrer" key={att.id}>
                                                                 <div className="rounded-xl border border-border overflow-hidden bg-muted/30 hover:border-primary transition-colors cursor-pointer relative group">
                                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <ImageIcon className="w-6 h-6 text-white" />
                                                                     </div>
-                                                                    <img src={`${API_URL}${att.file_path}`} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
+                                                                    <img src={mediaUrl(att.file_path)} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
                                                                 </div>
                                                             </a>
                                                         ))}
@@ -1044,12 +1029,12 @@ export default function CorrectionRequestPageV2() {
                                                     <div className="text-sm font-semibold text-secondary mb-2">Bukti Eksekusi (BPS):</div>
                                                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                                                         {selectedRequest.attachments.filter((a: any) => a.attachment_type === 'bps').map((att: any) => (
-                                                            <a href={`${API_URL}${att.file_path}`} target="_blank" rel="noreferrer" key={att.id}>
+                                                            <a href={mediaUrl(att.file_path)} target="_blank" rel="noreferrer" key={att.id}>
                                                                 <div className="rounded-xl border border-border overflow-hidden bg-muted/30 hover:border-primary transition-colors cursor-pointer relative group">
                                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                                         <ImageIcon className="w-6 h-6 text-white" />
                                                                     </div>
-                                                                    <img src={`${API_URL}${att.file_path}`} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
+                                                                    <img src={mediaUrl(att.file_path)} alt={att.filename} className="w-full h-auto aspect-square object-cover" />
                                                                 </div>
                                                             </a>
                                                         ))}

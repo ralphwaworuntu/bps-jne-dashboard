@@ -22,6 +22,27 @@ export async function fetchMyFinanceFiles(token: string): Promise<MyFilesRespons
     return res.json();
 }
 
+export async function fetchParsedFinanceFile(
+    token: string,
+    uploadId: number
+): Promise<{
+    id: number;
+    kind: string;
+    original_filename: string;
+    created_at: string;
+    cached: boolean;
+    data: any;
+}> {
+    const res = await fetch(`${API_URL}/finance/parsed/${uploadId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t || "Gagal memuat data parse finance");
+    }
+    return res.json();
+}
+
 export async function downloadFinanceFile(token: string, uploadId: number): Promise<Blob> {
     const res = await fetch(`${API_URL}/finance/download/${uploadId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -29,6 +50,7 @@ export async function downloadFinanceFile(token: string, uploadId: number): Prom
     if (!res.ok) throw new Error("Gagal mengunduh file dari server");
     return res.blob();
 }
+
 
 export async function uploadRekeningKoranApi(
     token: string,

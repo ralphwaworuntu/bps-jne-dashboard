@@ -114,6 +114,10 @@ export default function CakupanAreaDeliveryPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [rows, setRows] = useState<CakupanRow[]>([]);
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(50);
+    const [total, setTotal] = useState(0);
+    const [pages, setPages] = useState(0);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [downloading, setDownloading] = useState(false);
@@ -132,15 +136,23 @@ export default function CakupanAreaDeliveryPage() {
         }
         setLoading(true);
         try {
+            const params = new URLSearchParams({
+                page: String(page),
+                limit: String(pageSize),
+            });
+            if (search.trim()) params.set("q", search.trim());
             const [dataRes, infoRes] = await Promise.all([
-                fetch(`${API_URL}/api/cakupan-area`, {
+                fetch(`${API_URL}/api/cakupan-area?${params}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 }),
-                fetch(`${API_URL}/system-info`),
+                fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } }),
             ]);
             if (dataRes.ok) {
-                const json: CakupanRow[] = await dataRes.json();
-                setRows(json);
+                const json = await dataRes.json();
+                const items: CakupanRow[] = Array.isArray(json) ? json : (json.items || []);
+                setRows(items);
+                setTotal(Array.isArray(json) ? items.length : (json.total || 0));
+                setPages(Array.isArray(json) ? 1 : (json.pages || 0));
             }
             if (infoRes.ok) {
                 const info = await infoRes.json();
@@ -169,11 +181,15 @@ export default function CakupanAreaDeliveryPage() {
         } finally {
             setLoading(false);
         }
-    }, [router, showToast]);
+    }, [router, showToast, page, pageSize, search]);
 
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        setPage(1);
+    }, [search]);
 
     const columnOptions = useMemo(() => {
         const map: Record<string, string[]> = {};
@@ -468,6 +484,35 @@ export default function CakupanAreaDeliveryPage() {
                     </table>
                 </SyncedHorizontalTable>
             </div>
+
+            {(pages > 1 || total > 0) && (
+                <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm text-secondary">
+                    <span>
+                        Menampilkan {rows.length} baris (filter halaman) dari total {total} data
+                    </span>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            disabled={page <= 1}
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            className="px-3 py-1.5 rounded-lg border border-border bg-white disabled:opacity-50"
+                        >
+                            Sebelumnya
+                        </button>
+                        <span className="font-medium text-foreground">
+                            Halaman {page} / {Math.max(pages, 1)}
+                        </span>
+                        <button
+                            type="button"
+                            disabled={page >= pages}
+                            onClick={() => setPage((p) => p + 1)}
+                            className="px-3 py-1.5 rounded-lg border border-border bg-white disabled:opacity-50"
+                        >
+                            Berikutnya
+                        </button>
+                    </div>
+                </div>
+            )}
         </DashboardLayout>
     );
 }

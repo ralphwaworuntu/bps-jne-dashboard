@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, Fragment } from "react";
+import {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+    Fragment,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import DashboardLayout from "@/components/dashboard/v2/DashboardLayout";
@@ -15,6 +22,10 @@ import {
 } from "lucide-react";
 import { useToast } from "@/context/ToastContext";
 import { API_URL } from "@/config";
+import ShipmentRowsTable, {
+    type DetailRow,
+} from "@/app/dashboard/v2/lastmile/all-shipment/inbound/ShipmentRowsTable";
+import { FIRSTMILE_REPORT_DETAIL_COLUMNS } from "./firstmileReportColumns";
 
 type MetricPair = { awb: number; pct: number };
 
@@ -22,6 +33,7 @@ type TrRccMetrics = {
     h0: MetricPair;
     h1_lt_12: MetricPair;
     wrong_date: MetricPair;
+    un_receiving: MetricPair;
     total_awb: number;
     total_pct: number;
 };
@@ -32,6 +44,7 @@ type RccOmMetrics = {
     h1_gt_12: MetricPair;
     wrong_date: MetricPair;
     h2: MetricPair;
+    un_receiving: MetricPair;
     total_awb: number;
     total_pct: number;
 };
@@ -58,6 +71,38 @@ type ReportPayload = {
     };
 };
 
+type PivotDrill = {
+    source: "tr_rcc" | "rcc_om";
+    date?: string;
+    city?: string;
+    service?: string;
+};
+
+type TrRccBucketKey = "h0" | "h1_lt_12" | "wrong_date" | "un_receiving";
+type RccOmBucketKey =
+    | "h0"
+    | "h1_lt_12"
+    | "h1_gt_12"
+    | "wrong_date"
+    | "h2"
+    | "un_receiving";
+
+const TR_RCC_BUCKETS: { key: TrRccBucketKey; label: string }[] = [
+    { key: "h0", label: "H+0" },
+    { key: "h1_lt_12", label: "H+1 <12:00" },
+    { key: "wrong_date", label: "WRONG DATE" },
+    { key: "un_receiving", label: "UN RECEIVING" },
+];
+
+const RCC_OM_BUCKETS: { key: RccOmBucketKey; label: string }[] = [
+    { key: "h0", label: "H+0" },
+    { key: "h1_lt_12", label: "H+1 <12:00" },
+    { key: "h1_gt_12", label: "H+1 >12:00" },
+    { key: "wrong_date", label: "WRONG DATE" },
+    { key: "h2", label: "H+2" },
+    { key: "un_receiving", label: "UN RECEIVING" },
+];
+
 function formatPct(n: number) {
     return `${(n ?? 0).toFixed(2).replace(".", ",")}%`;
 }
@@ -83,6 +128,16 @@ async function fetchReport(token: string, selectedService: string): Promise<Repo
     return res.json();
 }
 
+function drillActive(active: PivotDrill | null, candidate: PivotDrill) {
+    if (!active) return false;
+    return (
+        active.source === candidate.source &&
+        (active.date || "") === (candidate.date || "") &&
+        (active.city || "") === (candidate.city || "") &&
+        (active.service || "") === (candidate.service || "")
+    );
+}
+
 export default function ReportFirstmilePage() {
     const router = useRouter();
     const { showToast } = useToast();
@@ -99,6 +154,11 @@ export default function ReportFirstmilePage() {
 
     const [loadingTr, setLoadingTr] = useState(true);
     const [loadingOm, setLoadingOm] = useState(true);
+    const [loadingDetail, setLoadingDetail] = useState(true);
+    const [detailItems, setDetailItems] = useState<DetailRow[]>([]);
+    const [detailMessage, setDetailMessage] = useState<string | null>(null);
+    const [pivotDrill, setPivotDrill] = useState<PivotDrill | null>(null);
+
     const [uploading, setUploading] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [fileMeta, setFileMeta] = useState<{ lastUpdate: string; filename: string }>({
@@ -112,7 +172,9 @@ export default function ReportFirstmilePage() {
 
     const fetchFileMeta = useCallback(async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const res = await fetch(`${API_URL}/system-info`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+            });
             if (!res.ok) return;
             const info = await res.json();
             if (info.master_report_last_update) {
@@ -140,6 +202,36 @@ export default function ReportFirstmilePage() {
             /* ignore */
         }
     }, []);
+
+    const loadDetail = useCallback(async () => {
+        const token = localStorage.getItem("token");
+        if (!token) {
+            router.push("/");
+            return;
+        }
+        setLoadingDetail(true);
+        try {
+            const res = await fetch(`${API_URL}/api/firstmile-report/rows`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: "Gagal memuat detail" }));
+                throw new Error(err.detail || "Gagal memuat detail");
+            }
+            const body = await res.json();
+            setDetailItems(Array.isArray(body.items) ? body.items : []);
+            setDetailMessage(body.message || null);
+        } catch (e) {
+            setDetailItems([]);
+            setDetailMessage(e instanceof Error ? e.message : "Gagal memuat detail");
+            showToast(
+                `Gagal memuat tabel detail: ${e instanceof Error ? e.message : "error"}`,
+                "error"
+            );
+        } finally {
+            setLoadingDetail(false);
+        }
+    }, [router, showToast]);
 
     const loadTr = useCallback(
         async (selectedService: string) => {
@@ -203,8 +295,8 @@ export default function ReportFirstmilePage() {
 
     const refreshAll = useCallback(async () => {
         await fetchFileMeta();
-        await Promise.all([loadTr(serviceTr), loadOm(serviceOm)]);
-    }, [fetchFileMeta, loadTr, loadOm, serviceTr, serviceOm]);
+        await Promise.all([loadTr(serviceTr), loadOm(serviceOm), loadDetail()]);
+    }, [fetchFileMeta, loadTr, loadOm, loadDetail, serviceTr, serviceOm]);
 
     useEffect(() => {
         const token = localStorage.getItem("token");
@@ -215,8 +307,51 @@ export default function ReportFirstmilePage() {
         fetchFileMeta();
         loadTr("(All)");
         loadOm("(All)");
+        loadDetail();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router]);
+
+    const applyPivotDrill = useCallback((drill: PivotDrill) => {
+        setPivotDrill((prev) => (drillActive(prev, drill) ? null : drill));
+        requestAnimationFrame(() => {
+            document
+                .getElementById("firstmile-report-table")
+                ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    }, []);
+
+    const pivotFilteredItems = useMemo(() => {
+        if (!pivotDrill) return detailItems;
+        return detailItems.filter((row) => {
+            if (pivotDrill.service && pivotDrill.service !== "(All)") {
+                const svc =
+                    String(row.Service ?? "").trim() || String(row.SERVICE ?? "").trim();
+                if (svc !== pivotDrill.service) return false;
+            }
+            if (pivotDrill.date) {
+                const d = String(row._pivot_date ?? "").trim();
+                if (d !== pivotDrill.date) return false;
+            }
+            if (pivotDrill.city) {
+                const c = String(row._pivot_city ?? "").trim();
+                if (c !== pivotDrill.city) return false;
+            }
+            return true;
+        });
+    }, [detailItems, pivotDrill]);
+
+    const pivotExternalLabel = useMemo(() => {
+        if (!pivotDrill) return null;
+        const parts = [
+            pivotDrill.source === "tr_rcc" ? "LT TR - RCC" : "LT RCC - OM",
+        ];
+        if (pivotDrill.date) parts.push(`Tanggal = ${pivotDrill.date}`);
+        if (pivotDrill.city) parts.push(`Cabang = ${pivotDrill.city}`);
+        if (pivotDrill.service && pivotDrill.service !== "(All)") {
+            parts.push(`Service = ${pivotDrill.service}`);
+        }
+        return parts.join(" · ");
+    }, [pivotDrill]);
 
     const handleUpload = async (file: File) => {
         const token = localStorage.getItem("token");
@@ -236,6 +371,7 @@ export default function ReportFirstmilePage() {
             }
             const body = await res.json();
             showToast(`Upload berhasil — ${body.rows} baris.`, "success");
+            setPivotDrill(null);
             await refreshAll();
         } catch (e) {
             showToast(`Upload gagal: ${e instanceof Error ? e.message : "error"}`, "error");
@@ -282,6 +418,11 @@ export default function ReportFirstmilePage() {
     const sectionBar =
         "flex flex-wrap items-center justify-between gap-3 bg-[#ffff99] border border-black/20 px-3 py-2 text-sm font-bold text-foreground";
 
+    const clickableNum = (active: boolean) =>
+        `${tdNum} cursor-pointer transition-colors hover:bg-sky-50 ${
+            active ? "bg-sky-100 font-bold text-sky-800 ring-1 ring-inset ring-sky-300" : ""
+        }`;
+
     const serviceSelect = (
         id: string,
         value: string,
@@ -307,9 +448,31 @@ export default function ReportFirstmilePage() {
         </div>
     );
 
+    const activeOmBuckets = useMemo(() => {
+        return RCC_OM_BUCKETS.filter(({ key }) => {
+            if ((grandOm?.[key]?.awb ?? 0) > 0) return true;
+            return rowsOm.some(
+                (g) =>
+                    (g.metrics[key]?.awb ?? 0) > 0 ||
+                    g.cities.some((c) => (c.metrics[key]?.awb ?? 0) > 0)
+            );
+        });
+    }, [grandOm, rowsOm]);
+
+    const activeTrBuckets = useMemo(() => {
+        return TR_RCC_BUCKETS.filter(({ key }) => {
+            if ((grandTr?.[key]?.awb ?? 0) > 0) return true;
+            return rowsTr.some(
+                (g) =>
+                    (g.metrics[key]?.awb ?? 0) > 0 ||
+                    g.cities.some((c) => (c.metrics[key]?.awb ?? 0) > 0)
+            );
+        });
+    }, [grandTr, rowsTr]);
+
     return (
         <DashboardLayout>
-            <div className="mx-auto max-w-7xl space-y-6">
+            <div className="mx-auto max-w-[1800px] space-y-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <Link
@@ -323,7 +486,7 @@ export default function ReportFirstmilePage() {
                             Report Firstmile
                         </h1>
                         <p className="mt-2 text-sm text-secondary">
-                            Upload master data, lalu filter Service per tabel pivot LT.
+                            Upload master data, pivot LT, lalu drill-down ke tabel detail.
                         </p>
                     </div>
                     <button
@@ -336,14 +499,14 @@ export default function ReportFirstmilePage() {
                     </button>
                 </div>
 
-                {/* Upload Master Data Report */}
-                <div className="rounded-2xl border border-border bg-white p-5 space-y-3">
+                <div className="space-y-3 rounded-2xl border border-border bg-white p-5">
                     <div>
                         <p className="text-sm font-semibold text-foreground">
                             Upload Master Data Report
                         </p>
                         <p className="mt-1 text-xs text-secondary">
-                            Format .xlsx / .xls / .csv — kolom Service, Tanggal, Kota dideteksi otomatis.
+                            Format .xlsx / .xls / .csv — header dinormalisasi ke skema Report
+                            Firstmile.
                         </p>
                     </div>
                     <input
@@ -405,6 +568,7 @@ export default function ReportFirstmilePage() {
                         </div>
                         {serviceSelect("service-tr-rcc", serviceTr, (v) => {
                             setServiceTr(v);
+                            setPivotDrill(null);
                             loadTr(v);
                         })}
                     </div>
@@ -413,15 +577,11 @@ export default function ReportFirstmilePage() {
                             <thead>
                                 <tr>
                                     <th rowSpan={2} className={thTop} />
-                                    <th colSpan={2} className={thTop}>
-                                        H+0
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        H+1 &lt;12:00
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        WRONG DATE
-                                    </th>
+                                    {activeTrBuckets.map((bucket) => (
+                                        <th key={bucket.key} colSpan={2} className={thTop}>
+                                            {bucket.label}
+                                        </th>
+                                    ))}
                                     <th rowSpan={2} className={thTop}>
                                         Total AWB
                                     </th>
@@ -430,18 +590,21 @@ export default function ReportFirstmilePage() {
                                     </th>
                                 </tr>
                                 <tr>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
+                                    {activeTrBuckets.map((bucket) => (
+                                        <Fragment key={`${bucket.key}-sub`}>
+                                            <th className={th}>AWB</th>
+                                            <th className={th}>%</th>
+                                        </Fragment>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {!loadingTr && rowsTr.length === 0 && (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-10 text-center text-secondary">
+                                        <td
+                                            colSpan={1 + activeTrBuckets.length * 2 + 2}
+                                            className="px-4 py-10 text-center text-secondary"
+                                        >
                                             Belum ada data. Upload Master Data Report di atas.
                                         </td>
                                     </tr>
@@ -449,6 +612,11 @@ export default function ReportFirstmilePage() {
                                 {rowsTr.map((group) => {
                                     const open = expandedTr[group.date];
                                     const m = group.metrics;
+                                    const dateDrill: PivotDrill = {
+                                        source: "tr_rcc",
+                                        date: group.date,
+                                        service: serviceTr,
+                                    };
                                     return (
                                         <Fragment key={`tr-date-${group.date}`}>
                                             <tr className="bg-white">
@@ -471,13 +639,23 @@ export default function ReportFirstmilePage() {
                                                         {group.date}
                                                     </button>
                                                 </td>
-                                                <td className={tdNum}>{formatAwb(m.h0.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h0.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.h1_lt_12.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h1_lt_12.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.wrong_date.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.wrong_date.pct)}</td>
-                                                <td className={`${tdNum} font-semibold`}>
+                                                {activeTrBuckets.map((bucket) => (
+                                                    <Fragment key={`${group.date}-${bucket.key}`}>
+                                                        <td className={tdNum}>
+                                                            {formatAwb(m[bucket.key].awb)}
+                                                        </td>
+                                                        <td className={tdNum}>
+                                                            {formatPct(m[bucket.key].pct)}
+                                                        </td>
+                                                    </Fragment>
+                                                ))}
+                                                <td
+                                                    className={clickableNum(
+                                                        drillActive(pivotDrill, dateDrill)
+                                                    )}
+                                                    onClick={() => applyPivotDrill(dateDrill)}
+                                                    title="Filter tabel detail"
+                                                >
                                                     {formatAwb(m.total_awb)}
                                                 </td>
                                                 <td className={`${tdNum} font-semibold`}>
@@ -487,27 +665,65 @@ export default function ReportFirstmilePage() {
                                             {open &&
                                                 group.cities.map((city) => {
                                                     const cm = city.metrics;
+                                                    const cityDrill: PivotDrill = {
+                                                        source: "tr_rcc",
+                                                        date: group.date,
+                                                        city: city.name,
+                                                        service: serviceTr,
+                                                    };
                                                     return (
-                                                        <tr key={`tr-${group.date}-${city.name}`}>
-                                                            <td className={`${td} pl-8 text-secondary`}>
+                                                        <tr
+                                                            key={`tr-${group.date}-${city.name}`}
+                                                        >
+                                                            <td
+                                                                className={`${td} cursor-pointer pl-8 text-secondary hover:bg-sky-50 ${
+                                                                    drillActive(
+                                                                        pivotDrill,
+                                                                        cityDrill
+                                                                    )
+                                                                        ? "bg-sky-100 font-semibold text-sky-800"
+                                                                        : ""
+                                                                }`}
+                                                                onClick={() =>
+                                                                    applyPivotDrill(cityDrill)
+                                                                }
+                                                                title="Filter tabel detail"
+                                                            >
                                                                 {city.name}
                                                             </td>
-                                                            <td className={tdNum}>{formatAwb(cm.h0.awb)}</td>
-                                                            <td className={tdNum}>{formatPct(cm.h0.pct)}</td>
-                                                            <td className={tdNum}>
-                                                                {formatAwb(cm.h1_lt_12.awb)}
+                                                            {activeTrBuckets.map((bucket) => (
+                                                                <Fragment
+                                                                    key={`${group.date}-${city.name}-${bucket.key}`}
+                                                                >
+                                                                    <td className={tdNum}>
+                                                                        {formatAwb(
+                                                                            cm[bucket.key].awb
+                                                                        )}
+                                                                    </td>
+                                                                    <td className={tdNum}>
+                                                                        {formatPct(
+                                                                            cm[bucket.key].pct
+                                                                        )}
+                                                                    </td>
+                                                                </Fragment>
+                                                            ))}
+                                                            <td
+                                                                className={clickableNum(
+                                                                    drillActive(
+                                                                        pivotDrill,
+                                                                        cityDrill
+                                                                    )
+                                                                )}
+                                                                onClick={() =>
+                                                                    applyPivotDrill(cityDrill)
+                                                                }
+                                                                title="Filter tabel detail"
+                                                            >
+                                                                {formatAwb(cm.total_awb)}
                                                             </td>
                                                             <td className={tdNum}>
-                                                                {formatPct(cm.h1_lt_12.pct)}
+                                                                {formatPct(cm.total_pct)}
                                                             </td>
-                                                            <td className={tdNum}>
-                                                                {formatAwb(cm.wrong_date.awb)}
-                                                            </td>
-                                                            <td className={tdNum}>
-                                                                {formatPct(cm.wrong_date.pct)}
-                                                            </td>
-                                                            <td className={tdNum}>{formatAwb(cm.total_awb)}</td>
-                                                            <td className={tdNum}>{formatPct(cm.total_pct)}</td>
                                                         </tr>
                                                     );
                                                 })}
@@ -517,13 +733,33 @@ export default function ReportFirstmilePage() {
                                 {grandTr && (
                                     <tr className="bg-[#dce6f1] font-bold">
                                         <td className={td}>Grand Total</td>
-                                        <td className={tdNum}>{formatAwb(grandTr.h0.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandTr.h0.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandTr.h1_lt_12.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandTr.h1_lt_12.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandTr.wrong_date.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandTr.wrong_date.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandTr.total_awb)}</td>
+                                        {activeTrBuckets.map((bucket) => (
+                                            <Fragment key={`grand-tr-${bucket.key}`}>
+                                                <td className={tdNum}>
+                                                    {formatAwb(grandTr[bucket.key].awb)}
+                                                </td>
+                                                <td className={tdNum}>
+                                                    {formatPct(grandTr[bucket.key].pct)}
+                                                </td>
+                                            </Fragment>
+                                        ))}
+                                        <td
+                                            className={clickableNum(
+                                                drillActive(pivotDrill, {
+                                                    source: "tr_rcc",
+                                                    service: serviceTr,
+                                                })
+                                            )}
+                                            onClick={() =>
+                                                applyPivotDrill({
+                                                    source: "tr_rcc",
+                                                    service: serviceTr,
+                                                })
+                                            }
+                                            title="Tampilkan semua (sesuai Service)"
+                                        >
+                                            {formatAwb(grandTr.total_awb)}
+                                        </td>
                                         <td className={tdNum}>{formatPct(grandTr.total_pct)}</td>
                                     </tr>
                                 )}
@@ -546,6 +782,7 @@ export default function ReportFirstmilePage() {
                         </div>
                         {serviceSelect("service-rcc-om", serviceOm, (v) => {
                             setServiceOm(v);
+                            setPivotDrill(null);
                             loadOm(v);
                         })}
                     </div>
@@ -554,21 +791,11 @@ export default function ReportFirstmilePage() {
                             <thead>
                                 <tr>
                                     <th rowSpan={2} className={thTop} />
-                                    <th colSpan={2} className={thTop}>
-                                        H+0
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        H+1 &lt;12:00
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        H+1 &gt;12:00
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        WRONG DATE
-                                    </th>
-                                    <th colSpan={2} className={thTop}>
-                                        H+2
-                                    </th>
+                                    {activeOmBuckets.map((bucket) => (
+                                        <th key={bucket.key} colSpan={2} className={thTop}>
+                                            {bucket.label}
+                                        </th>
+                                    ))}
                                     <th rowSpan={2} className={thTop}>
                                         Total AWB
                                     </th>
@@ -577,22 +804,21 @@ export default function ReportFirstmilePage() {
                                     </th>
                                 </tr>
                                 <tr>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
-                                    <th className={th}>AWB</th>
-                                    <th className={th}>%</th>
+                                    {activeOmBuckets.map((bucket) => (
+                                        <Fragment key={`${bucket.key}-sub`}>
+                                            <th className={th}>AWB</th>
+                                            <th className={th}>%</th>
+                                        </Fragment>
+                                    ))}
                                 </tr>
                             </thead>
                             <tbody>
                                 {!loadingOm && rowsOm.length === 0 && (
                                     <tr>
-                                        <td colSpan={13} className="px-4 py-10 text-center text-secondary">
+                                        <td
+                                            colSpan={1 + activeOmBuckets.length * 2 + 2}
+                                            className="px-4 py-10 text-center text-secondary"
+                                        >
                                             Belum ada data. Upload Master Data Report di atas.
                                         </td>
                                     </tr>
@@ -600,6 +826,11 @@ export default function ReportFirstmilePage() {
                                 {rowsOm.map((group) => {
                                     const open = expandedOm[group.date];
                                     const m = group.metrics;
+                                    const dateDrill: PivotDrill = {
+                                        source: "rcc_om",
+                                        date: group.date,
+                                        service: serviceOm,
+                                    };
                                     return (
                                         <Fragment key={`om-date-${group.date}`}>
                                             <tr>
@@ -622,17 +853,23 @@ export default function ReportFirstmilePage() {
                                                         {group.date}
                                                     </button>
                                                 </td>
-                                                <td className={tdNum}>{formatAwb(m.h0.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h0.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.h1_lt_12.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h1_lt_12.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.h1_gt_12.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h1_gt_12.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.wrong_date.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.wrong_date.pct)}</td>
-                                                <td className={tdNum}>{formatAwb(m.h2.awb)}</td>
-                                                <td className={tdNum}>{formatPct(m.h2.pct)}</td>
-                                                <td className={`${tdNum} font-semibold`}>
+                                                {activeOmBuckets.map((bucket) => (
+                                                    <Fragment key={`${group.date}-${bucket.key}`}>
+                                                        <td className={tdNum}>
+                                                            {formatAwb(m[bucket.key].awb)}
+                                                        </td>
+                                                        <td className={tdNum}>
+                                                            {formatPct(m[bucket.key].pct)}
+                                                        </td>
+                                                    </Fragment>
+                                                ))}
+                                                <td
+                                                    className={clickableNum(
+                                                        drillActive(pivotDrill, dateDrill)
+                                                    )}
+                                                    onClick={() => applyPivotDrill(dateDrill)}
+                                                    title="Filter tabel detail"
+                                                >
                                                     {formatAwb(m.total_awb)}
                                                 </td>
                                                 <td className={`${tdNum} font-semibold`}>
@@ -642,35 +879,65 @@ export default function ReportFirstmilePage() {
                                             {open &&
                                                 group.cities.map((city) => {
                                                     const cm = city.metrics;
+                                                    const cityDrill: PivotDrill = {
+                                                        source: "rcc_om",
+                                                        date: group.date,
+                                                        city: city.name,
+                                                        service: serviceOm,
+                                                    };
                                                     return (
-                                                        <tr key={`om-${group.date}-${city.name}`}>
-                                                            <td className={`${td} pl-8 text-secondary`}>
+                                                        <tr
+                                                            key={`om-${group.date}-${city.name}`}
+                                                        >
+                                                            <td
+                                                                className={`${td} cursor-pointer pl-8 text-secondary hover:bg-sky-50 ${
+                                                                    drillActive(
+                                                                        pivotDrill,
+                                                                        cityDrill
+                                                                    )
+                                                                        ? "bg-sky-100 font-semibold text-sky-800"
+                                                                        : ""
+                                                                }`}
+                                                                onClick={() =>
+                                                                    applyPivotDrill(cityDrill)
+                                                                }
+                                                                title="Filter tabel detail"
+                                                            >
                                                                 {city.name}
                                                             </td>
-                                                            <td className={tdNum}>{formatAwb(cm.h0.awb)}</td>
-                                                            <td className={tdNum}>{formatPct(cm.h0.pct)}</td>
-                                                            <td className={tdNum}>
-                                                                {formatAwb(cm.h1_lt_12.awb)}
+                                                            {activeOmBuckets.map((bucket) => (
+                                                                <Fragment
+                                                                    key={`${group.date}-${city.name}-${bucket.key}`}
+                                                                >
+                                                                    <td className={tdNum}>
+                                                                        {formatAwb(
+                                                                            cm[bucket.key].awb
+                                                                        )}
+                                                                    </td>
+                                                                    <td className={tdNum}>
+                                                                        {formatPct(
+                                                                            cm[bucket.key].pct
+                                                                        )}
+                                                                    </td>
+                                                                </Fragment>
+                                                            ))}
+                                                            <td
+                                                                className={clickableNum(
+                                                                    drillActive(
+                                                                        pivotDrill,
+                                                                        cityDrill
+                                                                    )
+                                                                )}
+                                                                onClick={() =>
+                                                                    applyPivotDrill(cityDrill)
+                                                                }
+                                                                title="Filter tabel detail"
+                                                            >
+                                                                {formatAwb(cm.total_awb)}
                                                             </td>
                                                             <td className={tdNum}>
-                                                                {formatPct(cm.h1_lt_12.pct)}
+                                                                {formatPct(cm.total_pct)}
                                                             </td>
-                                                            <td className={tdNum}>
-                                                                {formatAwb(cm.h1_gt_12.awb)}
-                                                            </td>
-                                                            <td className={tdNum}>
-                                                                {formatPct(cm.h1_gt_12.pct)}
-                                                            </td>
-                                                            <td className={tdNum}>
-                                                                {formatAwb(cm.wrong_date.awb)}
-                                                            </td>
-                                                            <td className={tdNum}>
-                                                                {formatPct(cm.wrong_date.pct)}
-                                                            </td>
-                                                            <td className={tdNum}>{formatAwb(cm.h2.awb)}</td>
-                                                            <td className={tdNum}>{formatPct(cm.h2.pct)}</td>
-                                                            <td className={tdNum}>{formatAwb(cm.total_awb)}</td>
-                                                            <td className={tdNum}>{formatPct(cm.total_pct)}</td>
                                                         </tr>
                                                     );
                                                 })}
@@ -680,23 +947,63 @@ export default function ReportFirstmilePage() {
                                 {grandOm && (
                                     <tr className="bg-[#dce6f1] font-bold">
                                         <td className={td}>Grand Total</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.h0.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandOm.h0.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.h1_lt_12.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandOm.h1_lt_12.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.h1_gt_12.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandOm.h1_gt_12.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.wrong_date.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandOm.wrong_date.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.h2.awb)}</td>
-                                        <td className={tdNum}>{formatPct(grandOm.h2.pct)}</td>
-                                        <td className={tdNum}>{formatAwb(grandOm.total_awb)}</td>
+                                        {activeOmBuckets.map((bucket) => (
+                                            <Fragment key={`grand-${bucket.key}`}>
+                                                <td className={tdNum}>
+                                                    {formatAwb(grandOm[bucket.key].awb)}
+                                                </td>
+                                                <td className={tdNum}>
+                                                    {formatPct(grandOm[bucket.key].pct)}
+                                                </td>
+                                            </Fragment>
+                                        ))}
+                                        <td
+                                            className={clickableNum(
+                                                drillActive(pivotDrill, {
+                                                    source: "rcc_om",
+                                                    service: serviceOm,
+                                                })
+                                            )}
+                                            onClick={() =>
+                                                applyPivotDrill({
+                                                    source: "rcc_om",
+                                                    service: serviceOm,
+                                                })
+                                            }
+                                            title="Tampilkan semua (sesuai Service)"
+                                        >
+                                            {formatAwb(grandOm.total_awb)}
+                                        </td>
                                         <td className={tdNum}>{formatPct(grandOm.total_pct)}</td>
                                     </tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
+                </div>
+
+                <div id="firstmile-report-table">
+                    <ShipmentRowsTable
+                        title="Report Firstmile — Detail"
+                        dateLabel={
+                            pivotDrill
+                                ? pivotExternalLabel || "Filter pivot"
+                                : "Semua baris"
+                        }
+                        columns={[...FIRSTMILE_REPORT_DETAIL_COLUMNS]}
+                        items={pivotFilteredItems}
+                        loading={loadingDetail}
+                        emptyMessage={
+                            pivotDrill
+                                ? "Tidak ada baris untuk filter pivot ini. Klik angka/kota lain atau reset filter."
+                                : detailMessage ||
+                                  "Belum ada data. Upload Master Data Report di atas."
+                        }
+                        iconClassName="text-indigo-700"
+                        hint="Klik nama cabang / Total AWB di pivot untuk filter tabel. Header A–GJ sesuai skema Report Firstmile."
+                        externalFilterLabel={pivotExternalLabel}
+                        onClearExternalFilters={() => setPivotDrill(null)}
+                    />
                 </div>
             </div>
         </DashboardLayout>

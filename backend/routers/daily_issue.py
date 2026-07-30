@@ -168,34 +168,69 @@ async def update_daily_issue(
     return issue
 
 from sqlalchemy.orm import selectinload
+from sqlalchemy import func
 
-@router.get("", response_model=List[DailyIssueRead], include_in_schema=False)
-@router.get("/", response_model=List[DailyIssueRead])
+@router.get("", include_in_schema=False)
+@router.get("/")
 async def get_daily_issues(
-    skip: int = 0, 
-    limit: int = 100,
+    skip: int = 0,
+    limit: int = 50,
+    page: Optional[int] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
     session: Session = Depends(get_session)
 ):
-    print(f"DEBUG: Endpoint reached by {current_user.email}") # DEBUG
-    statement = select(DailyIssue).options(selectinload(DailyIssue.attachments))
-    
+    """
+    List issue harian dengan pagination.
+    Respons: { items, total, page, limit, skip, pages }
+    """
+    if page is not None and page > 0:
+        skip = (page - 1) * limit
+    if limit < 1:
+        limit = 50
+    if limit > 200:
+        limit = 200
+    if skip < 0:
+        skip = 0
+
+    base = select(DailyIssue)
+    count_stmt = select(func.count()).select_from(DailyIssue)
+
     if start_date:
         try:
             start_dt = datetime.fromisoformat(start_date).replace(hour=0, minute=0, second=0)
-            statement = statement.where(DailyIssue.date >= start_dt)
-        except ValueError:
-             pass # Ignore invalid dates
-             
-    if end_date:
-        try:
-            end_dt = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
-            statement = statement.where(DailyIssue.date <= end_dt)
+            base = base.where(DailyIssue.date >= start_dt)
+            count_stmt = count_stmt.where(DailyIssue.date >= start_dt)
         except ValueError:
             pass
 
-    statement = statement.offset(skip).limit(limit).order_by(DailyIssue.date.desc())
+    if end_date:
+        try:
+            end_dt = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59)
+            base = base.where(DailyIssue.date <= end_dt)
+            count_stmt = count_stmt.where(DailyIssue.date <= end_dt)
+        except ValueError:
+            pass
+
+    total = session.exec(count_stmt).one()
+    statement = (
+        base.options(selectinload(DailyIssue.attachments))
+        .order_by(DailyIssue.date.desc())
+        .offset(skip)
+        .limit(limit)
+    )
     results = session.exec(statement).all()
-    return results
+    pages = (total + limit - 1) // limit if limit else 0
+    current_page = (skip // limit) + 1 if limit else 1
+
+    # Serialize via response model manually to keep attachments
+    items = [DailyIssueRead.model_validate(r) for r in results]
+    return {
+        "items": items,
+        "total": total,
+        "page": current_page,
+        "limit": limit,
+        "skip": skip,
+        "pages": pages,
+    }

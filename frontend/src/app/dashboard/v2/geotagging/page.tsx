@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useMemo, Fragment } from 'react';
-import { MapPin, Search, Loader2, X, Plus, Minus } from 'lucide-react';
+import { useState, useEffect, useMemo, Fragment, useRef, useCallback } from 'react';
+import Link from 'next/link';
+import { ArrowLeft, MapPin, Search, Loader2, Upload, X, Plus, Minus } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
 import { useToast } from '@/context/ToastContext';
 import { API_URL } from '../../../../config';
@@ -25,14 +26,29 @@ export default function GeotaggingPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
+    const [totalRows, setTotalRows] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
+    const [facets, setFacets] = useState<{ Status: string[]; "Status Code": string[]; "Courier Name": string[] }>({
+        Status: [],
+        "Status Code": [],
+        "Courier Name": [],
+    });
     const { showToast } = useToast();
 
-    // Pagination
+    // Pagination (server-side)
     const [currentPage, setCurrentPage] = useState(1);
-    const [rowsPerPage, setRowsPerPage] = useState(50); // Set to 50 initially
+    const [rowsPerPage, setRowsPerPage] = useState(50);
 
     // Image Modal State
     const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+    // Upload State
+    const uploadInputRef = useRef<HTMLInputElement>(null);
+    const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+    const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+    const [isDraggingFile, setIsDraggingFile] = useState(false);
+    const [uploading, setUploading] = useState(false);
 
     // Edit State for Dropdowns
     // Key: Cnote, Value: { [fieldName]: newValue }
@@ -53,77 +69,139 @@ export default function GeotaggingPage() {
     const [filterCourierName, setFilterCourierName] = useState<string>("ALL");
 
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const token = localStorage.getItem('token');
-                const res = await fetch(`${API_URL}/api/geotagging`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (!res.ok) {
-                    throw new Error("Gagal mengambil data geotagging.");
-                }
-                const result = await res.json();
-                setData(result);
-            } catch (err: any) {
-                setError(err.message || "Terjadi kesalahan.");
-            } finally {
-                setLoading(false);
-            }
-        };
+        const t = window.setTimeout(() => setDebouncedSearch(searchTerm), 300);
+        return () => window.clearTimeout(t);
+    }, [searchTerm]);
 
-        fetchData();
-    }, []);
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearch, filterStatus, filterStatusCode, filterCourierName, rowsPerPage]);
 
-    const uniqueStatuses = useMemo(() => {
-        const statuses = new Set(data.map(item => item['Status']).filter(Boolean));
-        return Array.from(statuses).sort();
-    }, [data]);
-
-    const uniqueStatusCodes = useMemo(() => {
-        const codes = new Set(data.map(item => item['Status Code']).filter(Boolean));
-        return Array.from(codes).sort();
-    }, [data]);
-
-    const uniqueCouriers = useMemo(() => {
-        const couriers = new Set(data.map(item => item['Courier Name']).filter(Boolean));
-        return Array.from(couriers).sort();
-    }, [data]);
-
-    const filteredData = useMemo(() => {
-        let result = data;
-
-        if (filterStatus !== "ALL") {
-            result = result.filter(row => String(row['Status'] || "").toUpperCase() === filterStatus.toUpperCase());
-        }
-        if (filterStatusCode !== "ALL") {
-            result = result.filter(row => String(row['Status Code'] || "").toUpperCase() === filterStatusCode.toUpperCase());
-        }
-        if (filterCourierName !== "ALL") {
-            result = result.filter(row => String(row['Courier Name'] || "").toUpperCase() === filterCourierName.toUpperCase());
-        }
-
-        if (searchTerm) {
-            const lowerSearch = searchTerm.toLowerCase();
-            result = result.filter(row => {
-                const ketGeotagg = editedFields[row['Cnote']]?.['KET GEOTAGG'] || row['KET GEOTAGG'] || "";
-                const ketPod = editedFields[row['Cnote']]?.['KET POD'] || row['KET POD'] || "";
-                const konfirmasiGeotagg = editedFields[row['Cnote']]?.['KONFIRMASI/ISSUE/KENDALA'] || row['KONFIRMASI/ISSUE/KENDALA'] || "";
-                const konfirmasiPod = editedFields[row['Cnote']]?.['KONFIRMASI FOTO POD'] || row['KONFIRMASI FOTO POD'] || "";
-
-                return String(row['Cnote'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(row['Status'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(row['Address'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(row['UPDATE GEOTAGG'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(row['Status Code'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(row['Courier Name'] || "").toLowerCase().includes(lowerSearch) ||
-                    String(ketGeotagg).toLowerCase().includes(lowerSearch) ||
-                    String(ketPod).toLowerCase().includes(lowerSearch) ||
-                    String(konfirmasiGeotagg).toLowerCase().includes(lowerSearch) ||
-                    String(konfirmasiPod).toLowerCase().includes(lowerSearch);
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        try {
+            const token = localStorage.getItem('token');
+            const params = new URLSearchParams({
+                page: String(currentPage),
+                limit: String(rowsPerPage),
             });
+            if (debouncedSearch.trim()) params.set('q', debouncedSearch.trim());
+            if (filterStatus !== 'ALL') params.set('status', filterStatus);
+            if (filterStatusCode !== 'ALL') params.set('status_code', filterStatusCode);
+            if (filterCourierName !== 'ALL') params.set('courier', filterCourierName);
+            const res = await fetch(`${API_URL}/api/geotagging?${params}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                throw new Error("Gagal mengambil data geotagging.");
+            }
+            const result = await res.json();
+            const items = Array.isArray(result) ? result : (result.items || []);
+            setData(items);
+            setTotalRows(Array.isArray(result) ? items.length : (result.total || 0));
+            setTotalPages(Array.isArray(result) ? 1 : (result.pages || 0));
+            if (result.facets) setFacets(result.facets);
+            setError(null);
+        } catch (err: any) {
+            setError(err.message || "Terjadi kesalahan.");
+        } finally {
+            setLoading(false);
         }
-        return result;
-    }, [data, searchTerm, editedFields, filterStatus, filterStatusCode, filterCourierName]);
+    }, [currentPage, rowsPerPage, debouncedSearch, filterStatus, filterStatusCode, filterCourierName]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const openUploadModal = () => {
+        setSelectedUploadFile(null);
+        setIsDraggingFile(false);
+        setIsUploadModalOpen(true);
+    };
+
+    const closeUploadModal = () => {
+        if (uploading) return;
+        setIsUploadModalOpen(false);
+        setSelectedUploadFile(null);
+        setIsDraggingFile(false);
+        if (uploadInputRef.current) uploadInputRef.current.value = "";
+    };
+
+    const acceptUploadFile = (file: File | null | undefined) => {
+        if (!file) return;
+
+        const lower = file.name.toLowerCase();
+        if (!lower.endsWith(".csv") && !lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
+            showToast("Format file harus .csv / .xlsx", "error");
+            return;
+        }
+        setSelectedUploadFile(file);
+    };
+
+    const handleUploadFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        e.target.value = "";
+        acceptUploadFile(file);
+    };
+
+    const handleDropZoneDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        if (uploading) return;
+        setIsDraggingFile(true);
+    };
+
+    const handleDropZoneDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingFile(false);
+    };
+
+    const handleDropZoneDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDraggingFile(false);
+        if (uploading) return;
+        acceptUploadFile(e.dataTransfer.files?.[0]);
+    };
+
+    const handleUploadSubmit = async () => {
+        if (!selectedUploadFile) {
+            showToast("Pilih file Geotaging terlebih dahulu", "error");
+            return;
+        }
+
+        setUploading(true);
+        try {
+            const token = localStorage.getItem("token");
+            const formData = new FormData();
+            formData.append("file", selectedUploadFile);
+            const res = await fetch(`${API_URL}/upload-geotagging`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+                body: formData,
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: "Upload gagal" }));
+                throw new Error(err.detail || "Upload gagal");
+            }
+            showToast("Upload Geotaging berhasil", "success");
+            setIsUploadModalOpen(false);
+            setSelectedUploadFile(null);
+            if (currentPage === 1) {
+                await fetchData();
+            } else {
+                setCurrentPage(1);
+            }
+        } catch (err: any) {
+            showToast(err.message || "Upload gagal", "error");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const uniqueStatuses = facets.Status || [];
+    const uniqueStatusCodes = facets["Status Code"] || [];
+    const uniqueCouriers = facets["Courier Name"] || [];
+
+    const filteredData = data;
 
     const groupedData = useMemo(() => {
         const result: { parent: GeotaggingRow, children: GeotaggingRow[] }[] = [];
@@ -185,17 +263,24 @@ export default function GeotaggingPage() {
         }
     };
 
-    // Pagination calculations
-    const indexOfLastRow = currentPage * rowsPerPage;
-    const indexOfFirstRow = indexOfLastRow - rowsPerPage;
-    const currentGroups = groupedData.slice(indexOfFirstRow, indexOfLastRow);
-    const totalPages = Math.ceil(groupedData.length / rowsPerPage);
+    // Pagination: data sudah dipotong di server; grouping hanya pada halaman ini
+    const currentGroups = groupedData;
+    const indexOfFirstRow = (currentPage - 1) * rowsPerPage;
+    const indexOfLastRow = Math.min(currentPage * rowsPerPage, totalRows);
+    const pageCount = Math.max(totalPages, 1);
     const TABLE_COLS = 12;
 
     return (
         <DashboardLayout>
             <div className="flex-1 overflow-y-auto bg-gray-50/50 p-5 md:p-8">
                 <div className="max-w-7xl mx-auto space-y-6">
+                    <Link
+                        href="/dashboard/v2/lastmile"
+                        className="inline-flex items-center text-muted-foreground transition-colors hover:text-primary"
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Lastmile Data
+                    </Link>
+
                     {/* Header Section */}
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
@@ -203,6 +288,14 @@ export default function GeotaggingPage() {
                             <p className="text-secondary mt-1">Kelola dan pantau data koordinat lokasi agen dan cabang.</p>
                         </div>
                         <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={openUploadModal}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-sm font-semibold transition-colors border border-emerald-100"
+                            >
+                                <Upload className="w-4 h-4" />
+                                Upload Data Geotag
+                            </button>
                             <button
                                 onClick={async () => {
                                     try {
@@ -324,7 +417,7 @@ export default function GeotaggingPage() {
                                 </div>
                                 <div className="flex items-center gap-2 border-l border-border pl-3">
                                     <span className="text-sm font-semibold text-purple-700 px-3 py-1.5 bg-purple-50 border border-purple-100 rounded-lg">
-                                        Total Data: {groupedData.length} Group
+                                        Total Data: {totalRows} Group
                                     </span>
                                 </div>
                             </div>
@@ -670,7 +763,7 @@ export default function GeotaggingPage() {
                         {!loading && !error && filteredData.length > 0 && (
                             <div className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gray-50/50 border-t border-border">
                                 <span className="text-sm text-secondary">
-                                    Displaying <span className="font-medium text-foreground">{Math.min(indexOfFirstRow + 1, groupedData.length)}</span> to <span className="font-medium text-foreground">{Math.min(indexOfLastRow, groupedData.length)}</span> of <span className="font-medium text-foreground">{groupedData.length}</span> groups
+                                    Displaying <span className="font-medium text-foreground">{Math.min(indexOfFirstRow + 1, totalRows)}</span> to <span className="font-medium text-foreground">{Math.min(indexOfLastRow, totalRows)}</span> of <span className="font-medium text-foreground">{totalRows}</span> groups
                                 </span>
 
                                 <div className="flex items-center gap-1">
@@ -683,12 +776,12 @@ export default function GeotaggingPage() {
                                     </button>
 
                                     <div className="flex items-center px-2 text-sm font-medium text-foreground">
-                                        Page {currentPage} of {totalPages}
+                                        Page {currentPage} of {pageCount}
                                     </div>
 
                                     <button
-                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                                        disabled={currentPage === totalPages}
+                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, pageCount))}
+                                        disabled={currentPage === pageCount}
                                         className="px-3 py-1.5 rounded-lg border border-border bg-white text-sm font-medium text-secondary hover:bg-gray-50 hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                                     >
                                         Next
@@ -700,6 +793,108 @@ export default function GeotaggingPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Upload Modal Popup */}
+            {isUploadModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+                        <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
+                                <Upload className="w-5 h-5 text-emerald-600" />
+                                Upload Data Geotag
+                            </h3>
+                            <button
+                                type="button"
+                                onClick={closeUploadModal}
+                                disabled={uploading}
+                                className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                                Tarik file ke area di bawah atau pilih manual, lalu klik Upload.
+                            </p>
+
+                            <div
+                                onDragOver={handleDropZoneDragOver}
+                                onDragLeave={handleDropZoneDragLeave}
+                                onDrop={handleDropZoneDrop}
+                                onClick={() => {
+                                    if (!uploading) uploadInputRef.current?.click();
+                                }}
+                                className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                                    isDraggingFile
+                                        ? "border-emerald-400 bg-emerald-50"
+                                        : selectedUploadFile
+                                            ? "border-emerald-200 bg-emerald-50/40"
+                                            : "border-border bg-gray-50/60 hover:border-emerald-300 hover:bg-emerald-50/40"
+                                } ${uploading ? "pointer-events-none opacity-60" : ""}`}
+                            >
+                                <div className="rounded-2xl bg-emerald-50 p-3">
+                                    <Upload className="h-6 w-6 text-emerald-600" />
+                                </div>
+                                {selectedUploadFile ? (
+                                    <div className="space-y-1">
+                                        <p className="max-w-[280px] truncate text-sm font-semibold text-foreground">
+                                            {selectedUploadFile.name}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {(selectedUploadFile.size / 1024 / 1024).toFixed(2)} MB — klik untuk ganti file
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        <p className="text-sm font-semibold text-foreground">
+                                            {isDraggingFile ? "Lepaskan file di sini" : "Drag & drop file di sini"}
+                                        </p>
+                                        <p className="text-xs text-muted-foreground">
+                                            atau klik untuk memilih — .csv / .xlsx / .xls
+                                        </p>
+                                    </div>
+                                )}
+                                <input
+                                    ref={uploadInputRef}
+                                    type="file"
+                                    accept=".csv,.xlsx,.xls"
+                                    className="hidden"
+                                    onChange={handleUploadFileChange}
+                                    disabled={uploading}
+                                />
+                            </div>
+                            <div className="flex justify-end gap-2 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={closeUploadModal}
+                                    disabled={uploading}
+                                    className="px-4 py-2 rounded-xl text-sm font-medium text-muted-foreground hover:bg-muted transition-colors disabled:opacity-50"
+                                >
+                                    Batal
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleUploadSubmit}
+                                    disabled={!selectedUploadFile || uploading}
+                                    className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 transition-colors"
+                                >
+                                    {uploading ? (
+                                        <>
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                            Mengunggah...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Upload className="w-4 h-4" />
+                                            Upload
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Image Modal Popup */}
             {selectedImage && (

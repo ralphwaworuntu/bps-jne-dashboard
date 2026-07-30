@@ -150,10 +150,7 @@ export default function LoginPage() {
                 </form>
 
                 <p className="text-center mt-6 text-slate-500 text-sm">
-                    Don't have an account?{' '}
-                    <Link href="/register" className="text-blue-400 hover:text-blue-300 transition-colors">
-                        Register
-                    </Link>
+                    Butuh akun baru? Hubungi Admin IT (menu Kelola User).
                 </p>
             </motion.div>
 

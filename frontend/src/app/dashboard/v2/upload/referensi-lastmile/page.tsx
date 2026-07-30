@@ -5,115 +5,15 @@ import Link from 'next/link';
 import {
     ArrowLeft,
     Database,
-    Upload,
-    CheckCircle,
     FileText,
     Search,
     Filter,
     Loader2
 } from 'lucide-react';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
+import ReferenceUploadCard from '@/components/dashboard/v2/ReferenceUploadCard';
 import { API_URL } from '../../../../../config';
 import { useToast } from '../../../../../context/ToastContext';
-
-interface UploadCardProps {
-    title: string;
-    icon: any;
-    description: string;
-    colorClass: 'blue' | 'emerald' | 'orange' | 'purple' | 'rose' | 'cyan';
-    file: File | null;
-    uploading: boolean;
-    onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-    onUpload: () => void;
-    acceptedFiles?: string;
-    isUploaded?: boolean;
-    lastUpdated?: string;
-    filename?: string;
-}
-
-function ReferenceUploadCard({ title, icon: Icon, description, colorClass, file, uploading, onFileChange, onUpload, acceptedFiles = ".xlsx, .xls, .csv", isUploaded, lastUpdated, filename }: UploadCardProps) {
-    const colors = {
-        blue: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-100', hoverborder: 'hover:border-blue-300', btn: 'bg-blue-600 hover:bg-blue-700' },
-        emerald: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-100', hoverborder: 'hover:border-emerald-300', btn: 'bg-emerald-600 hover:bg-emerald-700' },
-        orange: { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-100', hoverborder: 'hover:border-orange-300', btn: 'bg-orange-600 hover:bg-orange-700' },
-        purple: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-100', hoverborder: 'hover:border-purple-300', btn: 'bg-purple-600 hover:bg-purple-700' },
-        rose: { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-100', hoverborder: 'hover:border-rose-300', btn: 'bg-rose-600 hover:bg-rose-700' },
-        cyan: { bg: 'bg-cyan-50', text: 'text-cyan-600', border: 'border-cyan-100', hoverborder: 'hover:border-cyan-300', btn: 'bg-cyan-600 hover:bg-cyan-700' },
-    };
-
-    const theme = colors[colorClass];
-
-    return (
-        <div className={`p-6 bg-white border ${theme.border} ${theme.hoverborder} rounded-2xl transition-all shadow-sm flex flex-col`}>
-            {/* Header */}
-            <div className="flex justify-between items-start mb-4">
-                <div className={`p-3 rounded-xl ${theme.bg}`}>
-                    <Icon className={`w-6 h-6 ${theme.text}`} />
-                </div>
-            </div>
-
-            {/* Info */}
-            <div className="mb-4 flex-1">
-                <h3 className="font-bold text-foreground text-lg mb-1">{title}</h3>
-                <p className="text-secondary text-sm">{description}</p>
-            </div>
-
-            {/* Simulated Status */}
-            <div className={`mb-5 p-3 rounded-xl border flex items-start gap-2 ${isUploaded ? 'bg-emerald-50 border-emerald-100' : 'bg-gray-50 border-gray-100'}`}>
-                <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-medium mb-1 ${isUploaded ? 'text-emerald-700' : 'text-gray-400'}`}>
-                        {isUploaded ? 'Status Upload' : 'Status Integrasi Tabel'}
-                    </p>
-                    {isUploaded ? (
-                        <>
-                            <div className="flex items-center gap-1.5 text-sm font-semibold text-emerald-800 mb-0.5 truncate">
-                                <CheckCircle className="w-4 h-4" />
-                                <span>Berhasil Diunggah</span>
-                            </div>
-                            <p className="text-xs text-emerald-600/80 truncate" title={filename || ''}>
-                                {filename || 'File diunggah'}
-                            </p>
-                            <p className="text-[11px] text-emerald-600/60 mt-1">
-                                {lastUpdated}
-                            </p>
-                        </>
-                    ) : (
-                        <p className="text-sm text-gray-500 truncate">Sistem Menunggu File</p>
-                    )}
-                </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col gap-2 mt-auto">
-                <label className={`w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl ${theme.bg} ${theme.text} hover:opacity-80 font-medium cursor-pointer transition-colors shadow-sm`}>
-                    <Upload className="w-4 h-4" />
-                    <span className="text-sm truncate">{file ? file.name : "Pilih File..."}</span>
-                    <input type="file" accept={acceptedFiles} onChange={onFileChange} className="hidden" disabled={uploading} />
-                </label>
-
-                {file && (
-                    <button
-                        onClick={onUpload}
-                        disabled={uploading}
-                        className={`w-full flex justify-center items-center py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-medium text-white ${theme.btn} transition-all disabled:opacity-70 disabled:cursor-not-allowed`}
-                    >
-                        {uploading ? (
-                            <>
-                                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" />
-                                Processing...
-                            </>
-                        ) : (
-                            <>
-                                <Upload className="-ml-1 mr-2 h-4 w-4" />
-                                Unggah Sekarang
-                            </>
-                        )}
-                    </button>
-                )}
-            </div>
-        </div>
-    );
-}
 
 export default function ReferensiLastmilePage() {
     const { showToast } = useToast();
@@ -168,7 +68,7 @@ export default function ReferensiLastmilePage() {
 
     const fetchSystemInfo = async () => {
         try {
-            const res = await fetch(`${API_URL}/system-info`);
+            const res = await fetch(`${API_URL}/system-info`, { headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` } });
             if (res.ok) {
                 const data = await res.json();
 

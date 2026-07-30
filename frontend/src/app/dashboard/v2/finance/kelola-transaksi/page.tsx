@@ -23,6 +23,7 @@ import {
 import {
     downloadFinanceFile,
     fetchMyFinanceFiles,
+    fetchParsedFinanceFile,
     formatUploadedLabelFromIso,
     uploadBuktiTransaksiApi,
     uploadRekeningKoranApi,
@@ -322,15 +323,13 @@ export default function KelolaTransaksiPage() {
                     setActiveRekeningName(m.original_filename);
                     setActiveRekeningAt(formatUploadedLabelFromIso(m.created_at));
                     try {
-                        const blob = await downloadFinanceFile(token, m.id);
-                        setRekeningStored({ name: m.original_filename, blob });
                         const lower = m.original_filename.toLowerCase();
                         if (!lower.endsWith(".pdf")) {
-                            const buf = await blob.arrayBuffer();
-                            const { rows: parsed } = parseRekeningKoranBuffer(buf, m.original_filename);
-                            if (parsed.length > 0) {
+                            const parsed = await fetchParsedFinanceFile(token, m.id);
+                            const rows = parsed.data?.rows || [];
+                            if (rows.length > 0) {
                                 setRows(
-                                    parsed.map((r, i) => ({
+                                    rows.map((r: any, i: number) => ({
                                         ...r,
                                         id: `srv-rk-${m.id}-${i}`,
                                     }))
@@ -348,17 +347,11 @@ export default function KelolaTransaksiPage() {
                     setActiveBuktiName(m.original_filename);
                     setActiveBuktiAt(formatUploadedLabelFromIso(m.created_at));
                     try {
-                        const blob = await downloadFinanceFile(token, m.id);
-                        setBuktiStored({ name: m.original_filename, blob });
-                        const buf = await blob.arrayBuffer();
-                        try {
-                            const sheets = parseBuktiTransaksiBuffer(buf, m.original_filename);
-                            setBuktiSheets(sheets);
-                        } catch {
-                            setBuktiSheets([]);
-                        }
+                        const parsed = await fetchParsedFinanceFile(token, m.id);
+                        const sheets = parsed.data?.sheets || [];
+                        setBuktiSheets(sheets);
                     } catch {
-                        /* ignore */
+                        setBuktiSheets([]);
                     }
                 }
             } catch {
