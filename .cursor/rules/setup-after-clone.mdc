@@ -1,0 +1,25 @@
+---
+description: Setup wajib setelah clone/pull — dibaca AI Agent di laptop baru
+alwaysApply: true
+---
+
+# Setup setelah clone / pull
+
+Sebelum coding atau menjalankan server, pastikan environment lokal siap.
+
+## Tidak ada di Git — harus dibuat di laptop ini
+
+1. `backend/.env` — salin dari `backend/.env.example`, isi `JWT_SECRET_KEY`
+2. Backend venv + `pip install -r backend/requirements.txt`
+3. `frontend/node_modules` — `cd frontend && npm install`
+
+## Sudah ada di Git — jangan dihapus / recreate sia-sia
+
+- Source code, uploads di `backend/uploads/`, `backend/database.db`
+- Docs: `AGENTS.md`, `proses take out data inbound.md`, `Ekstraksi_Heading_Kolom.md`
+
+## Run
+
+- Backend: `uvicorn main:app --reload --host 0.0.0.0 --port 8000` (dari `backend`, pakai venv)
+- Frontend: `npm run dev -- --hostname 0.0.0.0 --port 3000`
+- Detail lengkap: baca root `AGENTS.md`
