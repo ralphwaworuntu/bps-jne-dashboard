@@ -12,7 +12,8 @@ import pandas as pd
 
 from services.paths import ALL_SHIPMENT_DIR
 from utils.inbound_pivot import _cell_str, _read_apex_csv, _strip_apostrophe
-from utils.page_util import filter_records_by_query, paginate_list
+from utils.page_util import filter_dataframe_by_query
+from utils.excel_io import read_excel_fast
 
 CTC_DAILY_DIR = ALL_SHIPMENT_DIR / "ctc_daily"
 CTC_MONTHLY_DIR = ALL_SHIPMENT_DIR / "ctc_monthly"
@@ -334,7 +335,7 @@ def _load_master_data_frame(
             if not path.is_file():
                 continue
             try:
-                frame = pd.read_excel(path, dtype=str)
+                frame = read_excel_fast(path, dtype=str)
                 frame.columns = [str(c).replace("\ufeff", "").strip() for c in frame.columns]
                 frame = normalize_master_columns(frame, kind)
                 break
@@ -1844,7 +1845,7 @@ def parse_ctc_upload(
     if suffix == ".csv":
         frame = _read_apex_csv(raw)
     else:
-        frame = pd.read_excel(io.BytesIO(raw), dtype=str)
+        frame = read_excel_fast(raw, dtype=str)
 
     frame.columns = [str(c).replace("\ufeff", "").strip() for c in frame.columns]
     unnamed_mask = frame.columns.str.contains(r"^Unnamed", case=False, na=False)
@@ -2097,6 +2098,36 @@ def filter_inbound_rows_after_un_inbound(df: pd.DataFrame) -> pd.DataFrame:
     return out[~delete_mask].copy()
 
 
+def prepare_ctc_view(
+    period_mode: str,
+    date_iso: Optional[str] = None,
+    month_yyyy_mm: Optional[str] = None,
+    update_day: Optional[str] = None,
+    kind: str = "inbound",
+    q: Optional[str] = None,
+) -> pd.DataFrame:
+    """Bangun view CTC terfilter (kind + search full-kolom) tanpa materialisasi dict penuh."""
+    df = read_ctc_frame(period_mode, date_iso, month_yyyy_mm, update_day)
+    kind_norm = (kind or "inbound").strip().lower()
+    if kind_norm not in {"inbound", "un_inbound"}:
+        kind_norm = "inbound"
+
+    if kind_norm == "un_inbound":
+        df = filter_un_inbound_rows(df)
+    else:
+        df = filter_inbound_rows_after_un_inbound(df)
+
+    if df.empty:
+        return df
+
+    view = df.copy()
+    for col in CTC_DETAIL_COLUMNS:
+        if col not in view.columns:
+            view[col] = ""
+    view = view[CTC_DETAIL_COLUMNS].fillna("")
+    return filter_dataframe_by_query(view, q)
+
+
 def list_ctc_detail(
     period_mode: str,
     date_iso: Optional[str] = None,
@@ -2107,19 +2138,20 @@ def list_ctc_detail(
     limit: int = 0,
     q: Optional[str] = None,
 ) -> dict:
-    df = read_ctc_frame(period_mode, date_iso, month_yyyy_mm, update_day)
     kind_norm = (kind or "inbound").strip().lower()
     if kind_norm not in {"inbound", "un_inbound"}:
         kind_norm = "inbound"
 
-    if kind_norm == "un_inbound":
-        # Duplikasi subset hasil filter ke tabel UN INBOUND (tanpa menghapus dari INBOUND).
-        df = filter_un_inbound_rows(df)
-    else:
-        # INBOUND dibersihkan setelah proses UN INBOUND selesai.
-        df = filter_inbound_rows_after_un_inbound(df)
+    view = prepare_ctc_view(
+        period_mode=period_mode,
+        date_iso=date_iso,
+        month_yyyy_mm=month_yyyy_mm,
+        update_day=update_day,
+        kind=kind_norm,
+        q=q,
+    )
 
-    if df.empty:
+    if view.empty:
         label = date_iso if (period_mode or "harian") == "harian" else f"{month_yyyy_mm} Tgl {update_day}"
         table_label = "UN INBOUND" if kind_norm == "un_inbound" else "INBOUND"
         return {
@@ -2132,16 +2164,10 @@ def list_ctc_detail(
             "message": f"Belum ada data {table_label} All Inbound & CTC untuk periode {label}.",
         }
 
-    view = df.copy()
-    for col in CTC_DETAIL_COLUMNS:
-        if col not in view.columns:
-            view[col] = ""
-    view = view[CTC_DETAIL_COLUMNS].fillna("")
-    records = view.to_dict(orient="records")
-    records = filter_records_by_query(records, q)
-    total = len(records)
+    total = int(len(view))
 
     if limit is None or int(limit) <= 0:
+        records = view.to_dict(orient="records")
         return {
             "items": records,
             "total": total,
@@ -2152,15 +2178,28 @@ def list_ctc_detail(
             "message": None,
         }
 
-    result = paginate_list(
-        records,
-        page=page,
-        limit=limit,
-        max_limit=max(int(limit), 200),
-    )
-    result["columns"] = CTC_DETAIL_COLUMNS
-    result["message"] = None
-    return result
+    page_n, lim = int(page or 1), int(limit)
+    if page_n < 1:
+        page_n = 1
+    if lim < 1:
+        lim = 1
+    max_limit = max(lim, 200)
+    if lim > max_limit:
+        lim = max_limit
+    start = (page_n - 1) * lim
+    end = start + lim
+    page_df = view.iloc[start:end]
+    records = page_df.to_dict(orient="records")
+    pages = (total + lim - 1) // lim if lim and total else 0
+    return {
+        "items": records,
+        "total": total,
+        "page": page_n,
+        "limit": lim,
+        "pages": pages,
+        "columns": CTC_DETAIL_COLUMNS,
+        "message": None,
+    }
 
 
 def export_ctc_detail_xlsx(
@@ -2171,18 +2210,18 @@ def export_ctc_detail_xlsx(
     kind: str = "inbound",
     q: Optional[str] = None,
 ) -> dict:
-    payload = list_ctc_detail(
+    frame = prepare_ctc_view(
         period_mode=period_mode,
         date_iso=date_iso,
         month_yyyy_mm=month_yyyy_mm,
         update_day=update_day,
         kind=kind,
-        page=1,
-        limit=0,
         q=q,
     )
-    items = payload.get("items", []) or []
-    frame = pd.DataFrame(items, columns=CTC_DETAIL_COLUMNS).fillna("")
+    if frame.empty:
+        frame = pd.DataFrame(columns=CTC_DETAIL_COLUMNS)
+    else:
+        frame = frame.fillna("")
 
     xlsx_buffer = io.BytesIO()
     with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as writer:

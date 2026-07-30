@@ -16,6 +16,10 @@ import {
 import DashboardLayout from "@/components/dashboard/v2/DashboardLayout";
 import { useToast } from "@/context/ToastContext";
 import { API_URL, authHeaders } from "@/config";
+import {
+    stageLabel,
+    uploadFormWithJobProgress,
+} from "@/lib/uploadJobProgress";
 import ShipmentRowsTable, {
     type DetailRow,
 } from "../inbound/ShipmentRowsTable";
@@ -478,6 +482,8 @@ export default function UnRunsheetPage() {
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadStageLabel, setUploadStageLabel] = useState("Mengunggah…");
     const [downloading, setDownloading] = useState(false);
 
     const [detailItems, setDetailItems] = useState<DetailRow[]>([]);
@@ -673,17 +679,29 @@ export default function UnRunsheetPage() {
         }
 
         setUploading(true);
+        setUploadProgress(0);
+        setUploadStageLabel("Mengunggah…");
         try {
             const form = new FormData();
             form.append("file", selectedFile);
             form.append("date", uploadDate);
 
-            const res = await fetch(`${API_URL}/api/all-shipment/un-runsheet/upload`, {
-                method: "POST",
-                headers: authHeaders() as HeadersInit,
-                body: form,
-            });
-            if (!res.ok) throw new Error(await parseError(res));
+            const token = localStorage.getItem("token");
+            if (!token) throw new Error("Sesi login tidak ditemukan. Silakan login ulang.");
+
+            await uploadFormWithJobProgress(
+                `${API_URL}/api/all-shipment/un-runsheet/upload`,
+                form,
+                (info) => {
+                    setUploadProgress(info.percent);
+                    setUploadStageLabel(
+                        info.phase === "uploading"
+                            ? "Mengunggah file…"
+                            : stageLabel(info.stage, info.message)
+                    );
+                },
+                { token }
+            );
 
             showToast(
                 `UN RUNSHEET berhasil diunggah — ${formatIdDate(uploadDate)}`,
@@ -692,6 +710,7 @@ export default function UnRunsheetPage() {
             setFilterDate(uploadDate);
             setModalOpen(false);
             setSelectedFile(null);
+            setUploadProgress(0);
             void loadPivot();
             void loadDetail();
         } catch (e: unknown) {
@@ -944,6 +963,23 @@ export default function UnRunsheetPage() {
                                 />
                             </div>
 
+                            {uploading ? (
+                                <div className="space-y-1">
+                                    <div className="flex items-center justify-between text-xs text-secondary">
+                                        <span>{uploadStageLabel}</span>
+                                        <span className="font-semibold text-foreground">
+                                            {uploadProgress}%
+                                        </span>
+                                    </div>
+                                    <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100">
+                                        <div
+                                            className="h-full rounded-full bg-rose-600 transition-[width] duration-200 ease-out"
+                                            style={{ width: `${uploadProgress}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ) : null}
+
                             <div className="flex justify-end gap-2 pt-1">
                                 <button
                                     type="button"
@@ -962,7 +998,7 @@ export default function UnRunsheetPage() {
                                     {uploading ? (
                                         <Loader2 className="size-4 animate-spin" />
                                     ) : null}
-                                    {uploading ? "Mengunggah…" : "Upload"}
+                                    {uploading ? `${uploadProgress}%` : "Upload"}
                                 </button>
                             </div>
                         </div>

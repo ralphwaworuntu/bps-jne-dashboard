@@ -21,7 +21,7 @@ from utils.ctc_inbound import (
     parse_ctc_upload,
 )
 from utils.inbound_pivot import _cell_str
-from utils.page_util import filter_records_by_query, paginate_list
+from utils.page_util import filter_dataframe_by_query
 
 UN_RUNSHEET_DAILY_DIR = ALL_SHIPMENT_DIR / "un_runsheet_daily"
 
@@ -71,14 +71,12 @@ def daily_file_path(date_iso: str) -> Path:
     return UN_RUNSHEET_DAILY_DIR / f"{date_iso}.csv"
 
 
-def parse_un_runsheet_upload(raw: bytes, suffix: str, date_iso: str) -> pd.DataFrame:
-    """Parse APEX → enrich CTC formulas → tag tanggal harian."""
-    return parse_ctc_upload(
-        raw,
-        suffix,
-        period_mode="harian",
-        date_iso=date_iso,
-    )
+def filtered_file_path(date_iso: str) -> Path:
+    return UN_RUNSHEET_DAILY_DIR / f"{date_iso}.filtered.csv"
+
+
+def pivot_cache_path(date_iso: str) -> Path:
+    return UN_RUNSHEET_DAILY_DIR / f"{date_iso}.pivot.json"
 
 
 def save_un_runsheet_for_date(
@@ -106,6 +104,86 @@ def save_un_runsheet_for_date(
     return path
 
 
+def write_ready_artifacts(date_iso: str) -> Dict[str, Any]:
+    """Hitung pipeline sekali → simpan filtered CSV + pivot JSON (hasil siap pakai)."""
+    UN_RUNSHEET_DAILY_DIR.mkdir(parents=True, exist_ok=True)
+    source = read_un_runsheet_frame(date_iso)
+    filtered = process_un_runsheet_pipeline(source)
+    fpath = filtered_file_path(date_iso)
+    if filtered.empty:
+        pd.DataFrame(columns=CTC_DETAIL_COLUMNS).to_csv(
+            fpath, index=False, encoding="utf-8-sig"
+        )
+    else:
+        view = filtered.copy()
+        for col in CTC_DETAIL_COLUMNS:
+            if col not in view.columns:
+                view[col] = ""
+        view[CTC_DETAIL_COLUMNS].fillna("").to_csv(
+            fpath, index=False, encoding="utf-8-sig"
+        )
+
+    cabang_options = list_cabang_options(filtered)
+    pivot_lt_im_rows = _build_lt_im_hierarchy(filtered)
+    pivot_lt_mti_rows = _build_lt_mti_hierarchy(filtered)
+    pivot_payload = {
+        "date": date_iso,
+        "cabang": "(All)",
+        "cabang_options": cabang_options,
+        "aging_columns": AGING_COLS,
+        "pivot_lt_im": {
+            "field": "LT IM TODAY",
+            "rows": pivot_lt_im_rows,
+            "grand_total": _pivot_grand_total(pivot_lt_im_rows),
+        },
+        "pivot_lt_mti": {
+            "field": "LT MTI TODAY",
+            "rows": pivot_lt_mti_rows,
+            "grand_total": _pivot_grand_total(pivot_lt_mti_rows),
+        },
+        "row_count_source": int(len(filtered)),
+        "message": None
+        if not filtered.empty
+        else f"Belum ada data UN RUNSHEET untuk tanggal {date_iso}.",
+    }
+    ppath = pivot_cache_path(date_iso)
+    ppath.write_text(json.dumps(pivot_payload, ensure_ascii=False), encoding="utf-8")
+    return {
+        "filtered_path": str(fpath),
+        "pivot_path": str(ppath),
+        "filtered_rows": int(len(filtered)),
+    }
+
+
+def read_filtered_frame(date_iso: str) -> pd.DataFrame:
+    """Baca cache filtered; fallback hitung sekali + tulis cache jika belum ada."""
+    fpath = filtered_file_path(date_iso)
+    if fpath.is_file():
+        try:
+            df = pd.read_csv(fpath, dtype=str, keep_default_na=False)
+            df.columns = [str(c).strip() for c in df.columns]
+            for col in CTC_DETAIL_COLUMNS:
+                if col not in df.columns:
+                    df[col] = ""
+            return df
+        except Exception:
+            pass
+    # Legacy data tanpa cache: bangun sekali lalu simpan
+    if daily_file_path(date_iso).is_file():
+        write_ready_artifacts(date_iso)
+        if fpath.is_file():
+            try:
+                df = pd.read_csv(fpath, dtype=str, keep_default_na=False)
+                df.columns = [str(c).strip() for c in df.columns]
+                for col in CTC_DETAIL_COLUMNS:
+                    if col not in df.columns:
+                        df[col] = ""
+                return df
+            except Exception:
+                pass
+    return pd.DataFrame(columns=CTC_DETAIL_COLUMNS)
+
+
 def read_un_runsheet_frame(date_iso: str) -> pd.DataFrame:
     path = daily_file_path(date_iso)
     if not path.is_file():
@@ -113,13 +191,24 @@ def read_un_runsheet_frame(date_iso: str) -> pd.DataFrame:
     try:
         df = pd.read_csv(path, dtype=str, keep_default_na=False)
         df.columns = [str(c).strip() for c in df.columns]
-        df = enrich_ctc_columns(df)
+        # Performa: jangan enrich ulang saat read.
+        # Enrichment sudah dilakukan di parse/save upload.
         for col in CTC_DETAIL_COLUMNS:
             if col not in df.columns:
                 df[col] = ""
         return df
     except Exception:
         return pd.DataFrame(columns=CTC_DETAIL_COLUMNS)
+
+
+def parse_un_runsheet_upload(raw: bytes, suffix: str, date_iso: str) -> pd.DataFrame:
+    """Parse APEX → enrich CTC formulas → tag tanggal harian."""
+    return parse_ctc_upload(
+        raw,
+        suffix,
+        period_mode="harian",
+        date_iso=date_iso,
+    )
 
 
 def process_un_runsheet_pipeline(df: pd.DataFrame) -> pd.DataFrame:
@@ -385,9 +474,26 @@ def list_cabang_options(df: pd.DataFrame) -> List[str]:
 
 
 def build_un_runsheet_pivot(date_iso: str, cabang: Optional[str] = None) -> dict:
-    df = filter_un_runsheet_universe(read_un_runsheet_frame(date_iso))
-    cabang_options = list_cabang_options(df)
-    filtered = apply_cabang_filter(df, cabang)
+    """Baca pivot dari cache siap pakai; cabang filter dihitung dari filtered cache."""
+    full = read_filtered_frame(date_iso)
+    cabang_options = list_cabang_options(full)
+    needle = (cabang or "").strip()
+    use_all = not needle or needle in {"(All)", "All", "*"}
+
+    if use_all:
+        # Snapshot pivot (All) dari cache bila ada
+        ppath = pivot_cache_path(date_iso)
+        if ppath.is_file():
+            try:
+                payload = json.loads(ppath.read_text(encoding="utf-8"))
+                payload["cabang"] = "(All)"
+                payload["cabang_options"] = cabang_options
+                return payload
+            except Exception:
+                pass
+        filtered = full
+    else:
+        filtered = apply_cabang_filter(full, cabang)
 
     pivot_lt_im_rows = _build_lt_im_hierarchy(filtered)
     pivot_lt_mti_rows = _build_lt_mti_hierarchy(filtered)
@@ -421,7 +527,7 @@ def list_un_runsheet_detail(
     limit: int = 0,
     q: Optional[str] = None,
 ) -> dict:
-    full = filter_un_runsheet_universe(read_un_runsheet_frame(date_iso))
+    full = read_filtered_frame(date_iso)
     cabang_options = list_cabang_options(full)
     df = apply_cabang_filter(full, cabang)
 
@@ -442,11 +548,11 @@ def list_un_runsheet_detail(
         if col not in view.columns:
             view[col] = ""
     view = view[CTC_DETAIL_COLUMNS].fillna("")
-    records = view.to_dict(orient="records")
-    records = filter_records_by_query(records, q)
-    total = len(records)
+    view = filter_dataframe_by_query(view, q)
+    total = int(len(view))
 
     if limit is None or int(limit) <= 0:
+        records = view.to_dict(orient="records")
         return {
             "items": records,
             "total": total,
@@ -458,13 +564,25 @@ def list_un_runsheet_detail(
             "message": None,
         }
 
-    result = paginate_list(
-        records,
-        page=page,
-        limit=limit,
-        max_limit=max(int(limit), 200),
-    )
-    result["columns"] = CTC_DETAIL_COLUMNS
-    result["cabang_options"] = cabang_options
-    result["message"] = None
-    return result
+    page_n, lim = int(page or 1), int(limit)
+    if page_n < 1:
+        page_n = 1
+    if lim < 1:
+        lim = 1
+    max_limit = max(lim, 200)
+    if lim > max_limit:
+        lim = max_limit
+    start = (page_n - 1) * lim
+    end = start + lim
+    records = view.iloc[start:end].to_dict(orient="records")
+    pages = (total + lim - 1) // lim if lim and total else 0
+    return {
+        "items": records,
+        "total": total,
+        "page": page_n,
+        "limit": lim,
+        "pages": pages,
+        "columns": CTC_DETAIL_COLUMNS,
+        "cabang_options": cabang_options,
+        "message": None,
+    }

@@ -3731,12 +3731,10 @@ async def upload_all_inbound_ctc(
     date: str = Form(""),
     month: str = Form(""),
     update_day: str = Form(""),
-    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Upload All Inbound & CTC → enrichment CUST NAME via VLOOKUP Account master."""
-    from utils.ctc_inbound import parse_ctc_upload, save_ctc_upload
-    from utils.excel_worker import run_in_excel_worker
+    """Upload All Inbound & CTC → antre job async (progress via GET /api/jobs/{id})."""
+    from utils.process_jobs import enqueue_job, public_job_view
 
     mode = (period_mode or "harian").strip().lower()
     if mode not in {"harian", "bulanan"}:
@@ -3778,58 +3776,25 @@ async def upload_all_inbound_ctc(
     if not content:
         raise HTTPException(status_code=400, detail="File upload kosong.")
 
-    try:
-        df = await run_in_excel_worker(
-            parse_ctc_upload,
-            content,
-            suffix,
-            mode,
-            date_iso,
-            month_yyyy_mm or None,
-            day_cutoff or None,
-        )
-        saved = await run_in_excel_worker(
-            save_ctc_upload,
-            df,
-            mode,
-            date_iso,
-            month_yyyy_mm or None,
-            day_cutoff or None,
-            file.filename,
-            current_user.email,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Upload gagal: {e!s}") from e
-
-    period_label = date_iso if mode == "harian" else f"{month_yyyy_mm} Tgl {day_cutoff}"
-    try:
-        create_notification(
-            session,
-            title="Upload Success",
-            message=(
-                f"All Inbound & CTC {period_label} ({file.filename}) "
-                f"berhasil diunggah ({len(df)} baris)."
-            ),
-            type="success",
-            user_id=current_user.id,
-        )
-    except Exception:
-        pass
-
-    return {
-        "message": f"All Inbound & CTC {period_label} berhasil diunggah",
-        "period_mode": mode,
-        "date": date_iso,
-        "month": month_yyyy_mm,
-        "update_day": day_cutoff,
-        "filename": file.filename,
-        "rows": int(len(df)),
-        "saved_as": str(saved),
-    }
+    job = enqueue_job(
+        kind="all_inbound_ctc",
+        user_id=int(current_user.id),
+        payload={
+            "period_mode": mode,
+            "date": date_iso,
+            "month": month_yyyy_mm,
+            "update_day": day_cutoff,
+            "suffix": suffix,
+            "uploaded_by": current_user.email or "",
+        },
+        raw_bytes=content,
+        raw_suffix=suffix,
+        original_filename=file.filename or "",
+    )
+    body = public_job_view(job)
+    body["job_id"] = job["id"]
+    body["message"] = "Upload diterima; pemrosesan dalam antrian"
+    return JSONResponse(status_code=202, content=body)
 
 
 @router.get("/api/all-shipment/all-inbound-ctc/rows")
@@ -3950,12 +3915,10 @@ async def upload_un_runsheet(
     request: Request,
     file: UploadFile = File(...),
     date: str = Form(...),
-    session: Session = Depends(get_session),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Upload APEX harian → enrichment CTC → simpan ke un_runsheet_daily."""
-    from utils.un_runsheet import parse_un_runsheet_upload, save_un_runsheet_for_date
-    from utils.excel_worker import run_in_excel_worker
+    """Upload UN RUNSHEET → antre job async (progress via GET /api/jobs/{id})."""
+    from utils.process_jobs import enqueue_job, public_job_view
 
     date_iso = (date or "").strip()
     try:
@@ -3980,43 +3943,22 @@ async def upload_un_runsheet(
     if not content:
         raise HTTPException(status_code=400, detail="File upload kosong.")
 
-    try:
-        df = await run_in_excel_worker(parse_un_runsheet_upload, content, suffix, date_iso)
-        saved = await run_in_excel_worker(
-            save_un_runsheet_for_date,
-            df,
-            date_iso,
-            file.filename,
-            current_user.email,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Upload gagal: {e!s}") from e
-
-    try:
-        create_notification(
-            session,
-            title="Upload Success",
-            message=(
-                f"UN RUNSHEET tanggal {date_iso} ({file.filename}) "
-                f"berhasil diunggah ({len(df)} baris)."
-            ),
-            type="success",
-            user_id=current_user.id,
-        )
-    except Exception:
-        pass
-
-    return {
-        "message": f"UN RUNSHEET tanggal {date_iso} berhasil diunggah",
-        "date": date_iso,
-        "filename": file.filename,
-        "rows": int(len(df)),
-        "saved_as": str(saved),
-    }
+    job = enqueue_job(
+        kind="un_runsheet",
+        user_id=int(current_user.id),
+        payload={
+            "date": date_iso,
+            "suffix": suffix,
+            "uploaded_by": current_user.email or "",
+        },
+        raw_bytes=content,
+        raw_suffix=suffix,
+        original_filename=file.filename or "",
+    )
+    body = public_job_view(job)
+    body["job_id"] = job["id"]
+    body["message"] = "Upload diterima; pemrosesan dalam antrian"
+    return JSONResponse(status_code=202, content=body)
 
 
 @router.get("/api/all-shipment/un-runsheet/pivot")

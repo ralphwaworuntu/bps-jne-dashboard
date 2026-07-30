@@ -12,6 +12,7 @@ import pandas as pd
 
 from services.paths import ALL_SHIPMENT_DIR
 from utils.page_util import filter_records_by_query, paginate_list
+from utils.excel_io import read_excel_fast
 
 INBOUND_DAILY_DIR = ALL_SHIPMENT_DIR / "inbound_daily"
 ZONA_COLS = ["A", "B", "C", "D"]
@@ -306,7 +307,7 @@ def load_coding_ntt_geo_map() -> Dict[str, Dict[str, str]]:
             if not path.is_file():
                 continue
             try:
-                frame = pd.read_excel(path, dtype=str)
+                frame = read_excel_fast(path, dtype=str)
                 frame.columns = [str(c).replace("\ufeff", "").strip() for c in frame.columns]
                 frame = normalize_master_columns(frame, KIND_CODING_NTT)
                 break
@@ -549,7 +550,7 @@ def parse_inbound_upload(raw: bytes, suffix: str, forced_date: str) -> pd.DataFr
     if suffix == ".csv":
         frame = _read_apex_csv(raw)
     else:
-        frame = pd.read_excel(io.BytesIO(raw), dtype=str)
+        frame = read_excel_fast(raw, dtype=str)
 
     # Bersihkan header (BOM, spasi)
     frame.columns = [str(c).replace("\ufeff", "").strip() for c in frame.columns]

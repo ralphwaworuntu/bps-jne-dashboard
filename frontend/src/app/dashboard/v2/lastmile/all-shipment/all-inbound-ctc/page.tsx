@@ -14,6 +14,10 @@ import {
 import DashboardLayout from "@/components/dashboard/v2/DashboardLayout";
 import { useToast } from "@/context/ToastContext";
 import { API_URL, authHeaders } from "@/config";
+import {
+    stageLabel,
+    uploadFormWithJobProgress,
+} from "@/lib/uploadJobProgress";
 import ShipmentRowsTable, {
     type DetailRow,
 } from "../inbound/ShipmentRowsTable";
@@ -88,6 +92,7 @@ export default function AllInboundCtcPage() {
     const [isDraggingFile, setIsDraggingFile] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadStageLabel, setUploadStageLabel] = useState("Mengunggah…");
     const [downloading, setDownloading] = useState(false);
     const [detailItems, setDetailItems] = useState<DetailRow[]>([]);
     const [loadingDetail, setLoadingDetail] = useState(false);
@@ -276,10 +281,10 @@ export default function AllInboundCtcPage() {
 
         setUploading(true);
         setUploadProgress(0);
+        setUploadStageLabel("Mengunggah…");
         try {
             const form = new FormData();
             form.append("file", selectedFile);
-            // Metadata periode untuk pemrosesan berikutnya
             form.append("period_mode", uploadPeriodMode);
             if (uploadPeriodMode === "harian") {
                 form.append("date", uploadDate);
@@ -291,41 +296,19 @@ export default function AllInboundCtcPage() {
             const token = localStorage.getItem("token");
             if (!token) throw new Error("Sesi login tidak ditemukan. Silakan login ulang.");
 
-            await new Promise<void>((resolve, reject) => {
-                const xhr = new XMLHttpRequest();
-                xhr.open(
-                    "POST",
-                    `${API_URL}/api/all-shipment/all-inbound-ctc/upload`,
-                    true
-                );
-                xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-
-                xhr.upload.onprogress = (event) => {
-                    if (!event.lengthComputable) return;
-                    const pct = Math.round((event.loaded / event.total) * 100);
-                    setUploadProgress(Math.max(0, Math.min(100, pct)));
-                };
-
-                xhr.onload = async () => {
-                    if (xhr.status >= 200 && xhr.status < 300) {
-                        setUploadProgress(100);
-                        resolve();
-                        return;
-                    }
-                    let msg = "Upload gagal";
-                    try {
-                        const parsed = JSON.parse(xhr.responseText || "{}");
-                        msg = parsed?.detail || parsed?.message || msg;
-                    } catch {
-                        msg = xhr.statusText || msg;
-                    }
-                    reject(new Error(msg));
-                };
-
-                xhr.onerror = () => reject(new Error("Gagal mengunggah file"));
-                xhr.onabort = () => reject(new Error("Upload dibatalkan"));
-                xhr.send(form);
-            });
+            await uploadFormWithJobProgress(
+                `${API_URL}/api/all-shipment/all-inbound-ctc/upload`,
+                form,
+                (info) => {
+                    setUploadProgress(info.percent);
+                    setUploadStageLabel(
+                        info.phase === "uploading"
+                            ? "Mengunggah file…"
+                            : stageLabel(info.stage, info.message)
+                    );
+                },
+                { token }
+            );
 
             const periodLabel =
                 uploadPeriodMode === "harian"
@@ -813,7 +796,7 @@ export default function AllInboundCtcPage() {
                             {uploading ? (
                                 <div className="space-y-1">
                                     <div className="flex items-center justify-between text-xs text-secondary">
-                                        <span>Progres Upload</span>
+                                        <span>{uploadStageLabel}</span>
                                         <span className="font-semibold text-foreground">
                                             {uploadProgress}%
                                         </span>

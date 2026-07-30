@@ -138,6 +138,14 @@ def on_startup():
     except Exception as e:
         print(f"WARN master data kind seed skipped: {e}")
 
+    try:
+        from utils.process_jobs import start_worker, register_builtin_handlers
+
+        register_builtin_handlers()
+        start_worker()
+    except Exception as e:
+        print(f"WARN process_jobs worker start skipped: {e}")
+
 
 # Domain routers (existing)
 app.include_router(daily_issue.router)
@@ -155,3 +163,8 @@ app.include_router(ops_master.router)
 app.include_router(system_api.router)
 app.include_router(auth_api.router)
 app.include_router(ops.router)
+
+from routers import jobs as jobs_router  # noqa: E402
+
+app.include_router(jobs_router.router)
+

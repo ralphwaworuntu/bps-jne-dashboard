@@ -61,7 +61,9 @@ Kerjakan berurutan jika environment belum siap:
 - Jangan commit kecuali user meminta; jika user minta push, exclude secrets & venv.
 - All Inbound & CTC: filter UN INBOUND (Bagian A) lalu take out INBOUND melanjutkan filter A — lihat `proses take out data inbound.md`.
 - UN RUNSHEET: pipeline di `backend/utils/un_runsheet.py`.
-
+- **Olah data besar (wajib):** upload lewat job async (`utils/process_jobs.py` + `GET /api/jobs/{id}`); UI progress via `frontend/src/lib/uploadJobProgress.ts`.
+- **Hasil siap pakai:** hitung sekali saat job (enrich/pipeline), simpan CSV/cache per tanggal atau bulan; tampilan/export/pivot **baca hasil**, jangan hitung ulang. CTC: `ctc_daily` / `ctc_monthly`. UN RUNSHEET: `{date}.csv` + `{date}.filtered.csv` + `{date}.pivot.json`.
+- Fase 3 (nanti): Postgres / Redis-Celery / worker terpisah — kontrak `job_id` + cache periode tetap.
 ## Jika user bilang “jalankan / setup project”
 
 AI harus: cek `.env` + venv + `node_modules` → buat yang kurang → start backend:8000 + frontend:3000 → verifikasi HTTP 200.
