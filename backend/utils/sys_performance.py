@@ -614,14 +614,29 @@ def _app_processes() -> List[Dict[str, Any]]:
         "python.exe",
         "python3",
         "python3.exe",
+        "uvicorn",
+        "uvicorn.exe",
         "celery",
         "celery.exe",
         "node",
         "node.exe",
         "next-server",
+        "next",
         "npm",
         "npm.cmd",
+        "sh",
+        "bash",
     }
+
+    def _name_interesting(name_l: str) -> bool:
+        if name_l in name_allow or name_l.startswith("python"):
+            return True
+        # Next.js often reports "next-server (v16.2.1)"
+        if "next-server" in name_l or name_l.startswith("next"):
+            return True
+        if "uvicorn" in name_l or "celery" in name_l:
+            return True
+        return False
 
     grouped: Dict[str, Dict[str, Any]] = {}
     for role, _hints in _APP_PROCESS_HINTS:
@@ -641,7 +656,7 @@ def _app_processes() -> List[Dict[str, Any]]:
                 info = p.info
                 pname = str(info.get("name") or "")
                 name_l = pname.lower()
-                if name_l not in name_allow and not name_l.startswith("python"):
+                if not _name_interesting(name_l):
                     continue
                 try:
                     cmdline_list = p.cmdline() or []
@@ -650,6 +665,12 @@ def _app_processes() -> List[Dict[str, Any]]:
                 cmd = " ".join(str(x) for x in cmdline_list).lower()
                 blob = f"{name_l} {cmd}"
             except (psutil.Error, Exception):
+                continue
+
+            # Skip generic shells unless cmdline clearly runs our app
+            if name_l in {"sh", "bash"} and not any(
+                h in blob for _, hints in _APP_PROCESS_HINTS for h in hints
+            ):
                 continue
 
             matched_role: Optional[str] = None
