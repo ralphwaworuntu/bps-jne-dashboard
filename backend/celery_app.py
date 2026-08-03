@@ -9,6 +9,14 @@ Di Windows pakai --pool=threads (bukan prefork).
 from __future__ import annotations
 
 import os
+import sys
+from pathlib import Path
+
+# Pastikan folder backend ada di sys.path (systemd / cwd tidak selalu sama).
+_BACKEND_ROOT = Path(__file__).resolve().parent
+_backend_str = str(_BACKEND_ROOT)
+if _backend_str not in sys.path:
+    sys.path.insert(0, _backend_str)
 
 from celery import Celery
 

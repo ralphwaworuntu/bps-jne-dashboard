@@ -6,7 +6,9 @@ import DashboardLayout from "@/components/dashboard/v2/DashboardLayout";
 import PerformanceGauge from "@/components/dashboard/v2/PerformanceGauge";
 import {
     Activity,
+    Boxes,
     Database,
+    FolderTree,
     HardDrive,
     Loader2,
     RefreshCw,
@@ -16,8 +18,8 @@ import {
 import { useToast } from "@/context/ToastContext";
 import { getSysPerformance, type SysPerformance } from "@/lib/itApi";
 
-function formatBytes(n: number) {
-    if (!n || n <= 0) return "—";
+function formatBytes(n: number | null | undefined) {
+    if (n == null || n <= 0) return "—";
     const units = ["B", "KB", "MB", "GB", "TB"];
     let v = n;
     let i = 0;
@@ -38,11 +40,25 @@ function formatUptime(sec: number | null | undefined) {
     return `${m}m`;
 }
 
+function formatSeconds(sec: number | null | undefined) {
+    if (sec == null || Number.isNaN(sec)) return "—";
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    if (sec < 3600) return `${(sec / 60).toFixed(1)}m`;
+    return `${(sec / 3600).toFixed(1)}h`;
+}
+
+function formatLoadAvg(vals: Array<number | null | undefined> | undefined) {
+    if (!vals || vals.length === 0) return "—";
+    return vals.map((v) => (v == null ? "—" : v.toFixed(2))).join(" / ");
+}
+
 function serviceTone(status: string) {
     const s = status.toLowerCase();
-    if (s === "ok") return "bg-emerald-100 text-emerald-800";
-    if (s === "disabled") return "bg-slate-100 text-slate-700";
-    if (s === "degraded") return "bg-amber-100 text-amber-800";
+    if (s === "ok" || s === "active") return "bg-emerald-100 text-emerald-800";
+    if (s === "disabled" || s === "inactive" || s === "unknown") {
+        return "bg-slate-100 text-slate-700";
+    }
+    if (s === "degraded" || s === "activating") return "bg-amber-100 text-amber-800";
     return "bg-red-100 text-red-800";
 }
 
@@ -127,6 +143,8 @@ export default function SysPerformancePage() {
     const g = data?.gauges;
     const feScore = frontendScoreFromClient(apiLatencyMs, heapPct);
     const primaryDisk = data?.disk?.[0];
+    const loadAvg = data?.cpu?.load_avg;
+    const swap = data?.swap;
 
     return (
         <DashboardLayout>
@@ -140,8 +158,8 @@ export default function SysPerformancePage() {
                             Sys Performance
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm text-secondary">
-                            Monitor kinerja backend, pengolahan data, frontend, traffic,
-                            hardware, dan stabilitas sistem secara real-time.
+                            Snapshot real-time dari host API (VPS), layanan DB/Redis/Celery,
+                            antrian job, dan penyimpanan upload — bukan histori jangka panjang.
                         </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -203,16 +221,14 @@ export default function SysPerformancePage() {
                             />
                             <MetaCard
                                 icon={<HardDrive className="size-5 text-primary" />}
-                                label="Disk utama"
-                                value={
-                                    primaryDisk
-                                        ? `${primaryDisk.percent}% · ${primaryDisk.mount}`
-                                        : "—"
-                                }
+                                label="Load avg 1/5/15"
+                                value={formatLoadAvg(loadAvg)}
                                 hint={
-                                    primaryDisk
-                                        ? `${formatBytes(primaryDisk.used_bytes)} / ${formatBytes(primaryDisk.total_bytes)}`
-                                        : undefined
+                                    swap
+                                        ? `Swap ${swap.percent}% · ${formatBytes(swap.used_bytes)} / ${formatBytes(swap.total_bytes)}`
+                                        : primaryDisk
+                                          ? `Disk ${primaryDisk.mount} ${primaryDisk.percent}%`
+                                          : undefined
                                 }
                             />
                         </div>
@@ -235,7 +251,7 @@ export default function SysPerformancePage() {
                                 <PerformanceGauge
                                     title="Processing"
                                     value={g.processing}
-                                    subtitle="Job CTC / UN RUNSHEET"
+                                    subtitle="Job CTC / UN RUNSHEET / YES"
                                 />
                                 <PerformanceGauge
                                     title="Frontend"
@@ -259,17 +275,17 @@ export default function SysPerformancePage() {
                             <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-secondary">
                                 Hardware monitor
                             </h2>
-                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                                 <PerformanceGauge
                                     title="Hardware"
                                     value={g.hardware}
-                                    subtitle="Skor beban CPU/RAM/Disk"
+                                    subtitle="Skor CPU/RAM/Disk/Swap"
                                 />
                                 <PerformanceGauge
                                     title="CPU"
                                     value={g.cpu}
                                     tone="usage"
-                                    subtitle={`${data.cpu.count} core`}
+                                    subtitle={`${data.cpu.count} core · load ${formatLoadAvg(loadAvg)}`}
                                 />
                                 <PerformanceGauge
                                     title="Memory"
@@ -283,6 +299,124 @@ export default function SysPerformancePage() {
                                     tone="usage"
                                     subtitle={primaryDisk?.mount || "—"}
                                 />
+                                <PerformanceGauge
+                                    title="Swap"
+                                    value={g.swap ?? swap?.percent ?? 0}
+                                    tone="usage"
+                                    subtitle={
+                                        swap
+                                            ? `${formatBytes(swap.used_bytes)} / ${formatBytes(swap.total_bytes)}`
+                                            : "—"
+                                    }
+                                />
+                            </div>
+                        </section>
+
+                        <section className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-[var(--radius-card)] border border-border bg-white p-5">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <Boxes className="size-5 text-primary" />
+                                    <h3 className="font-semibold text-foreground">
+                                        App processes
+                                    </h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[360px] text-left text-sm">
+                                        <thead className="bg-muted/60 text-xs uppercase text-secondary">
+                                            <tr>
+                                                <th className="px-3 py-2 font-semibold">Role</th>
+                                                <th className="px-3 py-2 font-semibold">PID</th>
+                                                <th className="px-3 py-2 font-semibold">CPU</th>
+                                                <th className="px-3 py-2 font-semibold">RSS</th>
+                                                <th className="px-3 py-2 font-semibold">n</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(data.processes || []).length === 0 ? (
+                                                <tr>
+                                                    <td
+                                                        colSpan={5}
+                                                        className="px-3 py-6 text-center text-secondary"
+                                                    >
+                                                        Tidak ada proses terdeteksi
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                (data.processes || []).map((p) => (
+                                                    <tr
+                                                        key={p.role}
+                                                        className="border-t border-border/70"
+                                                    >
+                                                        <td className="px-3 py-2 font-medium capitalize text-foreground">
+                                                            {p.role}
+                                                            {p.name ? (
+                                                                <span className="mt-0.5 block text-xs font-normal text-secondary">
+                                                                    {p.name}
+                                                                </span>
+                                                            ) : null}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {p.pid ?? "—"}
+                                                        </td>
+                                                        <td className="px-3 py-2 font-semibold text-foreground">
+                                                            {p.count > 0 ? `${p.cpu_percent}%` : "—"}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {p.count > 0
+                                                                ? formatBytes(p.rss_bytes)
+                                                                : "—"}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {p.count}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="rounded-[var(--radius-card)] border border-border bg-white p-5">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <Server className="size-5 text-primary" />
+                                    <h3 className="font-semibold text-foreground">
+                                        Units & ports
+                                    </h3>
+                                </div>
+                                <ul className="mb-4 flex flex-col gap-2">
+                                    {(data.units || []).map((u) => (
+                                        <li
+                                            key={u.name}
+                                            className="flex items-center justify-between gap-2 border-b border-border/60 pb-2 last:border-0"
+                                        >
+                                            <span className="text-sm font-medium text-foreground">
+                                                {u.name}
+                                            </span>
+                                            <span
+                                                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${serviceTone(u.active)}`}
+                                            >
+                                                {u.active}
+                                            </span>
+                                        </li>
+                                    ))}
+                                    {(data.units || []).length === 0 ? (
+                                        <li className="text-sm text-secondary">
+                                            Status systemd tidak tersedia (non-Linux / tanpa
+                                            systemctl).
+                                        </li>
+                                    ) : null}
+                                </ul>
+                                <div className="flex flex-wrap gap-2">
+                                    {(data.ports || []).map((p) => (
+                                        <span
+                                            key={`${p.name}-${p.port}`}
+                                            className={`rounded-full px-3 py-1 text-xs font-semibold ${serviceTone(p.status)}`}
+                                        >
+                                            {p.name}:{p.port} {p.open ? "open" : "down"}
+                                        </span>
+                                    ))}
+                                </div>
                             </div>
                         </section>
 
@@ -305,20 +439,42 @@ export default function SysPerformancePage() {
                                             key={name}
                                             className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 pb-3 last:border-0 last:pb-0"
                                         >
-                                            <div>
+                                            <div className="min-w-0 flex-1">
                                                 <p className="font-medium text-foreground">{name}</p>
                                                 <p className="text-xs text-secondary">
                                                     {svc.backend
                                                         ? `engine: ${svc.backend}`
                                                         : svc.detail || "—"}
+                                                    {svc.version ? ` · v${svc.version}` : ""}
                                                     {svc.latency_ms != null
                                                         ? ` · ${svc.latency_ms} ms`
+                                                        : ""}
+                                                    {typeof svc.connections === "number"
+                                                        ? ` · conn ${svc.connections}`
+                                                        : ""}
+                                                    {svc.size_bytes != null
+                                                        ? ` · ${formatBytes(svc.size_bytes)}`
+                                                        : ""}
+                                                    {svc.used_memory_human
+                                                        ? ` · mem ${svc.used_memory_human}`
+                                                        : ""}
+                                                    {typeof svc.connected_clients === "number"
+                                                        ? ` · clients ${svc.connected_clients}`
+                                                        : ""}
+                                                    {typeof svc.uptime_days === "number"
+                                                        ? ` · up ${svc.uptime_days}d`
                                                         : ""}
                                                     {typeof svc.workers === "number"
                                                         ? ` · workers ${svc.workers}`
                                                         : ""}
                                                     {typeof svc.active_tasks === "number"
                                                         ? ` · active ${svc.active_tasks}`
+                                                        : ""}
+                                                    {typeof svc.reserved_tasks === "number"
+                                                        ? ` · reserved ${svc.reserved_tasks}`
+                                                        : ""}
+                                                    {typeof svc.queue_depth === "number"
+                                                        ? ` · queue ${svc.queue_depth}`
                                                         : ""}
                                                 </p>
                                             </div>
@@ -332,6 +488,63 @@ export default function SysPerformancePage() {
                                 </ul>
                             </div>
 
+                            <div className="rounded-[var(--radius-card)] border border-border bg-white p-5">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <HardDrive className="size-5 text-primary" />
+                                    <h3 className="font-semibold text-foreground">Disk mounts</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[320px] text-left text-sm">
+                                        <thead className="bg-muted/60 text-xs uppercase text-secondary">
+                                            <tr>
+                                                <th className="px-3 py-2 font-semibold">Mount</th>
+                                                <th className="px-3 py-2 font-semibold">Used</th>
+                                                <th className="px-3 py-2 font-semibold">%</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {data.disk.length === 0 ? (
+                                                <tr>
+                                                    <td
+                                                        colSpan={3}
+                                                        className="px-3 py-6 text-center text-secondary"
+                                                    >
+                                                        Tidak ada data disk
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                data.disk.map((d) => (
+                                                    <tr
+                                                        key={d.mount}
+                                                        className="border-t border-border/70"
+                                                    >
+                                                        <td className="px-3 py-2">
+                                                            <p className="font-medium text-foreground">
+                                                                {d.mount}
+                                                            </p>
+                                                            {d.fstype ? (
+                                                                <p className="text-xs text-secondary">
+                                                                    {d.fstype}
+                                                                </p>
+                                                            ) : null}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {formatBytes(d.used_bytes)} /{" "}
+                                                            {formatBytes(d.total_bytes)}
+                                                        </td>
+                                                        <td className="px-3 py-2 font-semibold text-foreground">
+                                                            {d.percent}%
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section className="grid gap-4 lg:grid-cols-2">
                             <div className="rounded-[var(--radius-card)] border border-border bg-white p-5">
                                 <div className="mb-4 flex items-center gap-2">
                                     <Activity className="size-5 text-primary" />
@@ -357,13 +570,18 @@ export default function SysPerformancePage() {
                                         {data.jobs.success_rate_24h}%
                                     </span>
                                     {" · "}
-                                    Upload files:{" "}
+                                    Latency p50/p95:{" "}
                                     <span className="font-semibold text-foreground">
-                                        {data.uploads.tracked_files}
+                                        {formatSeconds(data.jobs.latency_p50_seconds)} /{" "}
+                                        {formatSeconds(data.jobs.latency_p95_seconds)}
                                     </span>
-                                    {data.uploads.newest_age_hours != null
-                                        ? ` · last activity ${data.uploads.newest_age_hours}h ago`
-                                        : ""}
+                                    {" · "}
+                                    Queue depth:{" "}
+                                    <span className="font-semibold text-foreground">
+                                        {data.services.celery.queue_depth ??
+                                            data.services.redis.queue_depth ??
+                                            "—"}
+                                    </span>
                                     {" · "}
                                     Errors 24h:{" "}
                                     <span className="font-semibold text-foreground">
@@ -371,6 +589,57 @@ export default function SysPerformancePage() {
                                     </span>{" "}
                                     (critical {data.errors.critical_last_24h})
                                 </p>
+
+                                {(data.jobs.by_kind || []).length > 0 ? (
+                                    <div className="mb-4 overflow-x-auto">
+                                        <table className="mb-2 w-full min-w-[420px] text-left text-sm">
+                                            <thead className="bg-muted/60 text-xs uppercase text-secondary">
+                                                <tr>
+                                                    <th className="px-3 py-2 font-semibold">
+                                                        Kind
+                                                    </th>
+                                                    <th className="px-3 py-2 font-semibold">
+                                                        OK/Fail
+                                                    </th>
+                                                    <th className="px-3 py-2 font-semibold">
+                                                        Fail%
+                                                    </th>
+                                                    <th className="px-3 py-2 font-semibold">
+                                                        p50
+                                                    </th>
+                                                    <th className="px-3 py-2 font-semibold">
+                                                        p95
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(data.jobs.by_kind || []).map((k) => (
+                                                    <tr
+                                                        key={k.kind}
+                                                        className="border-t border-border/70"
+                                                    >
+                                                        <td className="px-3 py-2 font-medium text-foreground">
+                                                            {k.kind}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {k.completed_24h}/{k.failed_24h}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {k.fail_rate_24h}%
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {formatSeconds(k.p50_seconds)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {formatSeconds(k.p95_seconds)}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : null}
+
                                 <div className="overflow-x-auto">
                                     <table className="w-full min-w-[420px] text-left text-sm">
                                         <thead className="bg-muted/60 text-xs uppercase text-secondary">
@@ -401,7 +670,8 @@ export default function SysPerformancePage() {
                                                                 {j.kind}
                                                             </p>
                                                             <p className="text-xs text-secondary">
-                                                                {j.message || String(j.id).slice(0, 8)}
+                                                                {j.message ||
+                                                                    String(j.id).slice(0, 8)}
                                                             </p>
                                                         </td>
                                                         <td className="px-3 py-2 capitalize text-secondary">
@@ -409,6 +679,69 @@ export default function SysPerformancePage() {
                                                         </td>
                                                         <td className="px-3 py-2 font-semibold text-foreground">
                                                             {j.percent}%
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div className="rounded-[var(--radius-card)] border border-border bg-white p-5">
+                                <div className="mb-4 flex items-center gap-2">
+                                    <FolderTree className="size-5 text-primary" />
+                                    <h3 className="font-semibold text-foreground">
+                                        Upload storage
+                                    </h3>
+                                </div>
+                                <p className="mb-3 text-sm text-secondary">
+                                    Total{" "}
+                                    <span className="font-semibold text-foreground">
+                                        {formatBytes(data.uploads.total_bytes)}
+                                    </span>
+                                    {" · "}
+                                    files tracked{" "}
+                                    <span className="font-semibold text-foreground">
+                                        {data.uploads.tracked_files}
+                                    </span>
+                                    {data.uploads.newest_age_hours != null
+                                        ? ` · last activity ${data.uploads.newest_age_hours}h ago`
+                                        : ""}
+                                </p>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full min-w-[280px] text-left text-sm">
+                                        <thead className="bg-muted/60 text-xs uppercase text-secondary">
+                                            <tr>
+                                                <th className="px-3 py-2 font-semibold">Folder</th>
+                                                <th className="px-3 py-2 font-semibold">Size</th>
+                                                <th className="px-3 py-2 font-semibold">Files</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {(data.uploads.folders || []).length === 0 ? (
+                                                <tr>
+                                                    <td
+                                                        colSpan={3}
+                                                        className="px-3 py-6 text-center text-secondary"
+                                                    >
+                                                        Folder uploads kosong / belum dihitung
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                                (data.uploads.folders || []).map((f) => (
+                                                    <tr
+                                                        key={f.name}
+                                                        className="border-t border-border/70"
+                                                    >
+                                                        <td className="px-3 py-2 font-medium text-foreground">
+                                                            {f.name}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {formatBytes(f.bytes)}
+                                                        </td>
+                                                        <td className="px-3 py-2 text-secondary">
+                                                            {f.files}
                                                         </td>
                                                     </tr>
                                                 ))

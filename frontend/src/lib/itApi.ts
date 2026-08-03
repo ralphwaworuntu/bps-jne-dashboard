@@ -150,6 +150,26 @@ export type SysServiceStatus = {
     detail?: string;
     workers?: number;
     active_tasks?: number;
+    reserved_tasks?: number;
+    scheduled_tasks?: number;
+    queue_depth?: number | null;
+    version?: string | null;
+    connections?: number | null;
+    size_bytes?: number | null;
+    used_memory_bytes?: number | null;
+    used_memory_human?: string | null;
+    connected_clients?: number | null;
+    uptime_days?: number | null;
+};
+
+export type SysJobKindStats = {
+    kind: string;
+    completed_24h: number;
+    failed_24h: number;
+    fail_rate_24h: number;
+    p50_seconds: number | null;
+    p95_seconds: number | null;
+    sample_size: number;
 };
 
 export type SysPerformance = {
@@ -169,11 +189,37 @@ export type SysPerformance = {
         used_bytes: number;
         percent: number;
     };
-    disk: Array<{
-        mount: string;
+    swap?: {
         total_bytes: number;
         used_bytes: number;
         percent: number;
+    };
+    disk: Array<{
+        mount: string;
+        fstype?: string;
+        total_bytes: number;
+        used_bytes: number;
+        percent: number;
+    }>;
+    processes?: Array<{
+        role: string;
+        pid: number | null;
+        name: string | null;
+        cpu_percent: number;
+        rss_bytes: number;
+        count: number;
+    }>;
+    units?: Array<{
+        name: string;
+        active: string;
+        detail?: string | null;
+    }>;
+    ports?: Array<{
+        name: string;
+        host: string;
+        port: number;
+        open: boolean;
+        status: string;
     }>;
     services: {
         api: SysServiceStatus;
@@ -188,6 +234,9 @@ export type SysPerformance = {
         completed_last_24h: number;
         success_rate_24h: number;
         processing_score: number;
+        latency_p50_seconds?: number | null;
+        latency_p95_seconds?: number | null;
+        by_kind?: SysJobKindStats[];
         recent: Array<{
             id: string;
             kind: string;
@@ -206,6 +255,9 @@ export type SysPerformance = {
         tracked_files: number;
         newest_age_hours: number | null;
         activity_score: number;
+        total_bytes?: number;
+        sized_files?: number;
+        folders?: Array<{ name: string; bytes: number; files: number }>;
     };
     gauges: {
         overall: number;
@@ -217,6 +269,7 @@ export type SysPerformance = {
         cpu: number;
         memory: number;
         disk: number;
+        swap?: number;
     };
 };
 
