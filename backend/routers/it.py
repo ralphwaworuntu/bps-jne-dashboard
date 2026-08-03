@@ -54,7 +54,7 @@ SECTION_ROLES: list[RoleOption] = [
     RoleOption(
         section="IT",
         role="Admin IT",
-        description="Kelola User, Log Error",
+        description="Kelola User, Log Error, Sys Performance",
     ),
 ]
 
@@ -234,6 +234,17 @@ def reset_password(
     session.commit()
     session.refresh(user)
     return user
+
+
+@router.get("/sys-performance")
+def get_sys_performance(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Snapshot kinerja sistem untuk halaman IT → Sys Performance."""
+    require_it_admin(current_user)
+    from utils.sys_performance import collect_sys_performance
+
+    return collect_sys_performance()
 
 
 @router.get("/error-logs", response_model=list[SystemErrorLogRead])

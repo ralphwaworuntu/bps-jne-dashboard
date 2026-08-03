@@ -42,9 +42,13 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 
-@router.post("/register")
+@router.post("/register", status_code=status.HTTP_403_FORBIDDEN)
 async def register_user():
-    """Pendaftaran publik ditutup. Buat user lewat modul IT → Kelola User."""
+    """Pendaftaran publik ditutup. Buat user lewat modul IT → Kelola User.
+
+    Body diabaikan sengaja: jangan parse sebagai ``User`` / ``UserCreate`` di sini
+    agar attempt bot/scan tidak memicu ValidationError CRITICAL di middleware.
+    """
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Pendaftaran publik ditutup. Hubungi Admin IT untuk dibuatkan akun.",

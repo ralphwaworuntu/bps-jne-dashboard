@@ -3094,21 +3094,35 @@ async def download_cakupan_area(current_user: User = Depends(get_current_active_
 # ──────────────────────────────────────────────
 
 _KIRIMAN_YES_COL_ALIASES = {
-    "cabang": ["cabang", "branch", "cabang destinasi", "dest", "destination"],
+    "cabang": ["destinasi", "destination", "cabang destinasi", "cabang", "branch"],
+    "origin": ["origin", "cabang origin", "origin cabang", "3lc origin"],
+    "progress": ["progress", "status progress", "progres"],
     "status_pod": ["status pod", "status_pod", "statuspod", "pod status"],
-    "lt": ["lt", "status lt", "ots", "lead time", "leadtime"],
+    "lt": ["transaksi - today", "lt", "status lt", "ots", "lead time", "leadtime"],
+    "awb": ["awb", "cnote", "connote", "no awb"],
 }
 
+# Excel pivot Columns = PROGRESS (urutan rumus)
 DB_STATUS_COLS = [
-    "CLOSE - CANCEL",
-    "CLOSE - RETURN",
     "CLOSE - SUCCESS",
+    "CLOSE - CANCEL",
     "UNDEL",
-    "UN IM",
-    "UN RCC",
+    "CLOSE - RETURN",
+    "ON DELIVERY",
+    "UN RUNSHEET",
+    "UN INBOUND",
     "UN OM",
+    "UN RCC",
 ]
-OTS_STATUS_COLS = ["UNDEL", "UN IM", "UN RCC", "UN OM"]
+# OTS: PROGRESS open (non-CLOSE)
+OTS_STATUS_COLS = [
+    "UNDEL",
+    "ON DELIVERY",
+    "UN RUNSHEET",
+    "UN INBOUND",
+    "UN OM",
+    "UN RCC",
+]
 
 
 def _find_kiriman_col(columns, aliases: List[str]) -> Optional[str]:
@@ -3119,12 +3133,22 @@ def _find_kiriman_col(columns, aliases: List[str]) -> Optional[str]:
     return None
 
 
-def _read_kiriman_yes_df() -> pd.DataFrame:
-    if not KIRIMAN_YES_FILE.exists():
-        return pd.DataFrame()
-    df = pd.read_csv(KIRIMAN_YES_FILE, dtype=str, keep_default_na=False)
-    df.columns = [str(c).strip() for c in df.columns]
-    return df.fillna("")
+def _read_kiriman_yes_df(
+    date: Optional[str] = None,
+    *,
+    period_mode: Optional[str] = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> pd.DataFrame:
+    from utils.kiriman_yes import read_kiriman_yes_raw
+
+    # Rumus sudah dihitung sekali saat upload; baca CSV siap pakai.
+    return read_kiriman_yes_raw(
+        date,
+        period_mode=period_mode,
+        month=month,
+        update_day=update_day,
+    )
 
 
 def _map_status_bucket(raw: str) -> Optional[str]:
@@ -3169,28 +3193,43 @@ def _map_status_bucket(raw: str) -> Optional[str]:
     return None
 
 
+def _progress_column_value(raw: str, allowed: List[str]) -> Optional[str]:
+    """Ambil nilai kolom PROGRESS untuk pivot (exact + normalisasi STATUS_POD)."""
+    from utils.kiriman_yes import map_progress_bucket
+
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    if s in allowed:
+        return s
+    bucket = map_progress_bucket(s)
+    if bucket and bucket in allowed:
+        return bucket
+    return None
+
+
 def _normalize_lt_label(raw: str) -> str:
-    s = (raw or "").strip().upper().replace(" ", "")
+    s = (raw or "").strip()
     if not s:
         return "Unknown"
-    # >H+5 / H+5+
-    if s.startswith(">") or "H+5" in s and (">" in s or "+" in s[s.find("5") + 1 :]):
-        if "H+5" in s or s.startswith(">H"):
-            return ">H+5"
+    upper = s.upper().replace(" ", "")
+    if upper == "CLOSE":
+        return "CLOSE"
+    if upper.startswith(">") or (">H+5" in upper) or upper.startswith(">H"):
+        return ">H+5"
     for n in range(0, 6):
-        if s in (f"H+{n}", f"H{n}", f"+{n}") or s == f"H+{n}":
+        if upper in (f"H+{n}", f"H{n}", f"+{n}") or upper == f"H+{n}":
             return f"H+{n}"
-        if f"H+{n}" in s and n < 5:
+        if f"H+{n}" in upper and n < 5:
             return f"H+{n}"
-    if "H+5" in s or s.endswith("5"):
-        # treat H+5 and above as >H+5 when marked
-        if ">" in (raw or "") or s.startswith(">"):
+    if "H+5" in upper:
+        if ">" in s:
             return ">H+5"
         return "H+5"
-    return (raw or "").strip() or "Unknown"
+    return s
 
 
-_LT_ORDER = ["H+0", "H+1", "H+2", "H+3", "H+4", "H+5", ">H+5"]
+_LT_ORDER = ["H+0", "H+1", "H+2", "H+3", "H+4", "H+5", ">H+5", "CLOSE"]
 
 
 def _lt_sort_key(label: str):
@@ -3204,73 +3243,208 @@ def _empty_counts(cols: List[str]) -> Dict[str, int]:
     return {c: 0 for c in cols}
 
 
-def _build_kiriman_yes_pivot(table: str, status_pod: Optional[str] = None) -> dict:
-    df = _read_kiriman_yes_df()
-    empty_db = {"rows": [], "grand_total": {**_empty_counts(DB_STATUS_COLS), "Grand Total": 0}, "status_options": []}
-    empty_ots = {"groups": [], "grand_total": {**_empty_counts(OTS_STATUS_COLS), "Grand Total": 0}, "status_options": []}
+def _active_progress_columns(grand: Dict[str, int], ordered: List[str]) -> List[str]:
+    """Kolom PROGRESS yang punya data (grand total > 0), urutan tetap."""
+    return [c for c in ordered if int(grand.get(c) or 0) > 0]
+
+
+def _awb_count(row, awb_col: Optional[str]) -> int:
+    if awb_col is None:
+        return 1
+    return 1 if str(row[awb_col]).strip() else 0
+
+
+def _build_kiriman_yes_pivot(
+    table: str,
+    status_pod: Optional[str] = None,
+    cabang: Optional[str] = None,
+    origin: Optional[str] = None,
+    date: Optional[str] = None,
+    period_mode: Optional[str] = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> dict:
+    """Pivot Excel:
+    DATABASE — Rows=Destinasi, Columns=PROGRESS, Values=Count of AWB
+    OTS      — Rows=TRANSAKSI-TODAY→Destinasi, Columns=PROGRESS (filter OTS), Values=Count of AWB
+    """
+    from utils.kiriman_yes import (
+        list_upload_dates,
+        period_label,
+        resolve_period,
+    )
+
+    mode, date_iso, month_v, day_v = resolve_period(
+        period_mode,
+        date=date,
+        month=month,
+        update_day=update_day,
+    )
+    df = _read_kiriman_yes_df(
+        date_iso,
+        period_mode=mode,
+        month=month_v,
+        update_day=day_v,
+    )
+    upload_dates = list_upload_dates(mode)
+    label = period_label(mode, date=date_iso, month=month_v, update_day=day_v)
+    period_meta = {
+        "upload_dates": upload_dates,
+        "upload_date": date_iso or None,
+        "period_mode": mode,
+        "month": month_v,
+        "update_day": day_v,
+        "period_label": label,
+    }
+
+    col_keys = list(DB_STATUS_COLS if table == "database" else OTS_STATUS_COLS)
+    empty_db = {
+        "rows": [],
+        "grand_total": {"Grand Total": 0},
+        "columns": [],
+        "status_options": [],
+        "cabang_options": [],
+        "origin_options": [],
+        **period_meta,
+    }
+    empty_ots = {
+        "groups": [],
+        "grand_total": {"Grand Total": 0},
+        "columns": [],
+        "status_options": [],
+        "cabang_options": [],
+        "origin_options": [],
+        **period_meta,
+    }
 
     if df.empty:
         return empty_db if table == "database" else empty_ots
 
-    cabang_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["cabang"])
-    status_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["status_pod"])
+    destinasi_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["cabang"])
+    origin_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["origin"])
+    progress_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["progress"])
+    if progress_col is None:
+        progress_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["status_pod"])
     lt_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["lt"])
+    awb_col = _find_kiriman_col(df.columns, _KIRIMAN_YES_COL_ALIASES["awb"])
 
+    # Opsi filter PROGRESS (sesuai field Columns di Excel)
     status_options: List[str] = []
-    if status_col:
-        status_options = sorted(
-            {str(v).strip() for v in df[status_col].tolist() if str(v).strip()},
+    if progress_col:
+        allowed_all = set(DB_STATUS_COLS)
+        opts = set()
+        for v in df[progress_col].tolist():
+            bucket = _progress_column_value(str(v), list(allowed_all))
+            if bucket:
+                opts.add(bucket)
+            s = str(v).strip()
+            if s:
+                opts.add(s)
+        status_options = sorted(opts, key=lambda x: x.lower())
+
+    origin_options: List[str] = []
+    if origin_col:
+        origin_options = sorted(
+            {str(v).strip() for v in df[origin_col].tolist() if str(v).strip()},
             key=lambda x: x.lower(),
         )
 
     filtered = df
-    if status_pod and status_pod not in ("", "(All)", "All") and status_col:
-        filtered = df[df[status_col].astype(str).str.strip() == status_pod.strip()]
+    org = (origin or "").strip()
+    if org and org not in ("", "(All)", "All") and origin_col:
+        filtered = filtered[filtered[origin_col].astype(str).str.strip() == org]
+
+    destinasi_options: List[str] = []
+    if destinasi_col:
+        destinasi_options = sorted(
+            {str(v).strip() for v in filtered[destinasi_col].tolist() if str(v).strip()},
+            key=lambda x: x.lower(),
+        )
+
+    cab = (cabang or "").strip()
+    if cab and cab not in ("", "(All)", "All") and destinasi_col:
+        filtered = filtered[filtered[destinasi_col].astype(str).str.strip() == cab]
+
+    # Filter field PROGRESS (param status_pod tetap dipakai FE)
+    prog_filter = (status_pod or "").strip()
+    if prog_filter and prog_filter not in ("", "(All)", "All") and progress_col:
+        filtered = filtered[
+            filtered[progress_col].astype(str).str.strip() == prog_filter
+        ]
 
     if table == "database":
-        # Cabang -> status bucket counts
+        # Rows=Destinasi, Columns=PROGRESS, Values=Count AWB
         matrix: Dict[str, Dict[str, int]] = {}
         for _, row in filtered.iterrows():
-            cabang = str(row[cabang_col]).strip() if cabang_col else "Unknown"
-            if not cabang:
-                cabang = "Unknown"
-            status_raw = str(row[status_col]) if status_col else ""
-            bucket = _map_status_bucket(status_raw)
-            if bucket not in DB_STATUS_COLS:
+            dest_name = str(row[destinasi_col]).strip() if destinasi_col else "Unknown"
+            if not dest_name:
+                dest_name = "Unknown"
+            progress_raw = str(row[progress_col]) if progress_col else ""
+            bucket = _progress_column_value(progress_raw, DB_STATUS_COLS)
+            if bucket is None:
                 continue
-            if cabang not in matrix:
-                matrix[cabang] = _empty_counts(DB_STATUS_COLS)
-            matrix[cabang][bucket] += 1
+            n = _awb_count(row, awb_col)
+            if not n:
+                continue
+            if dest_name not in matrix:
+                matrix[dest_name] = _empty_counts(DB_STATUS_COLS)
+            matrix[dest_name][bucket] += n
 
         rows_out = []
         grand = _empty_counts(DB_STATUS_COLS)
         grand["Grand Total"] = 0
-        for cabang in sorted(matrix.keys(), key=lambda c: c.lower()):
-            counts = matrix[cabang]
+        for dest_name in sorted(matrix.keys(), key=lambda c: c.lower()):
+            counts = matrix[dest_name]
             total = sum(counts[c] for c in DB_STATUS_COLS)
-            row_obj = {"Cabang": cabang, **counts, "Grand Total": total}
+            row_obj = {"Cabang": dest_name, "Destinasi": dest_name, **counts, "Grand Total": total}
             rows_out.append(row_obj)
             for c in DB_STATUS_COLS:
                 grand[c] += counts[c]
             grand["Grand Total"] += total
 
-        return {"rows": rows_out, "grand_total": grand, "status_options": status_options}
+        active_cols = _active_progress_columns(grand, DB_STATUS_COLS)
+        slim_rows = []
+        for row_obj in rows_out:
+            slim = {
+                "Cabang": row_obj["Cabang"],
+                "Destinasi": row_obj.get("Destinasi", row_obj["Cabang"]),
+                "Grand Total": row_obj["Grand Total"],
+            }
+            for c in active_cols:
+                slim[c] = int(row_obj.get(c) or 0)
+            slim_rows.append(slim)
+        slim_grand = {c: int(grand.get(c) or 0) for c in active_cols}
+        slim_grand["Grand Total"] = int(grand.get("Grand Total") or 0)
 
-    # OTS table: LT group -> Cabang -> UN* counts
+        return {
+            "rows": slim_rows,
+            "grand_total": slim_grand,
+            "columns": active_cols,
+            "status_options": status_options,
+            "cabang_options": destinasi_options,
+            "origin_options": origin_options,
+            **period_meta,
+        }
+
+    # OTS: Rows=TRANSAKSI-TODAY → Destinasi, Columns=PROGRESS (OTS only), Values=Count AWB
     groups_map: Dict[str, Dict[str, Dict[str, int]]] = {}
     for _, row in filtered.iterrows():
-        status_raw = str(row[status_col]) if status_col else ""
-        bucket = _map_status_bucket(status_raw)
-        if bucket not in OTS_STATUS_COLS:
+        progress_raw = str(row[progress_col]) if progress_col else ""
+        bucket = _progress_column_value(progress_raw, OTS_STATUS_COLS)
+        if bucket is None:
             continue
-        lt_label = _normalize_lt_label(str(row[lt_col]) if lt_col else "")
-        cabang = str(row[cabang_col]).strip() if cabang_col else "Unknown"
-        if not cabang:
-            cabang = "Unknown"
+        n = _awb_count(row, awb_col)
+        if not n:
+            continue
+        lt_raw = str(row[lt_col]) if lt_col else ""
+        lt_label = _normalize_lt_label(lt_raw)
+        dest_name = str(row[destinasi_col]).strip() if destinasi_col else "Unknown"
+        if not dest_name:
+            dest_name = "Unknown"
         groups_map.setdefault(lt_label, {})
-        if cabang not in groups_map[lt_label]:
-            groups_map[lt_label][cabang] = _empty_counts(OTS_STATUS_COLS)
-        groups_map[lt_label][cabang][bucket] += 1
+        if dest_name not in groups_map[lt_label]:
+            groups_map[lt_label][dest_name] = _empty_counts(OTS_STATUS_COLS)
+        groups_map[lt_label][dest_name][bucket] += n
 
     groups_out = []
     grand = _empty_counts(OTS_STATUS_COLS)
@@ -3279,10 +3453,15 @@ def _build_kiriman_yes_pivot(table: str, status_pod: Optional[str] = None) -> di
         cities = []
         group_counts = _empty_counts(OTS_STATUS_COLS)
         group_total = 0
-        for cabang in sorted(groups_map[lt_label].keys(), key=lambda c: c.lower()):
-            counts = groups_map[lt_label][cabang]
+        for dest_name in sorted(groups_map[lt_label].keys(), key=lambda c: c.lower()):
+            counts = groups_map[lt_label][dest_name]
             total = sum(counts[c] for c in OTS_STATUS_COLS)
-            cities.append({"Cabang": cabang, **counts, "Grand Total": total})
+            cities.append({
+                "Cabang": dest_name,
+                "Destinasi": dest_name,
+                **counts,
+                "Grand Total": total,
+            })
             for c in OTS_STATUS_COLS:
                 group_counts[c] += counts[c]
                 grand[c] += counts[c]
@@ -3294,112 +3473,149 @@ def _build_kiriman_yes_pivot(table: str, status_pod: Optional[str] = None) -> di
             "metrics": {**group_counts, "Grand Total": group_total},
         })
 
-    return {"groups": groups_out, "grand_total": grand, "status_options": status_options}
+    active_cols = _active_progress_columns(grand, OTS_STATUS_COLS)
+    slim_groups = []
+    for group in groups_out:
+        slim_cities = []
+        for city in group["cities"]:
+            slim_city = {
+                "Cabang": city["Cabang"],
+                "Destinasi": city.get("Destinasi", city["Cabang"]),
+                "Grand Total": city["Grand Total"],
+            }
+            for c in active_cols:
+                slim_city[c] = int(city.get(c) or 0)
+            slim_cities.append(slim_city)
+        slim_metrics = {c: int(group["metrics"].get(c) or 0) for c in active_cols}
+        slim_metrics["Grand Total"] = int(group["metrics"].get("Grand Total") or 0)
+        slim_groups.append({
+            "lt": group["lt"],
+            "cities": slim_cities,
+            "metrics": slim_metrics,
+        })
+    slim_grand = {c: int(grand.get(c) or 0) for c in active_cols}
+    slim_grand["Grand Total"] = int(grand.get("Grand Total") or 0)
+
+    return {
+        "groups": slim_groups,
+        "grand_total": slim_grand,
+        "columns": active_cols,
+        "status_options": [c for c in status_options if c in OTS_STATUS_COLS or not c.startswith("CLOSE")],
+        "cabang_options": destinasi_options,
+        "origin_options": origin_options,
+        **period_meta,
+    }
 
 
 @router.post("/upload-kiriman-yes")
+@router.post("/api/kiriman-yes/upload")
 async def upload_kiriman_yes(
     request: Request,
     file: UploadFile = File(...),
-    session: Session = Depends(get_session),
+    period_mode: str = Form("harian"),
+    date: str = Form(""),
+    month: str = Form(""),
+    update_day: str = Form(""),
     current_user: User = Depends(get_current_active_user),
 ):
+    """Upload Database Kiriman YES → antre job async (progress via GET /api/jobs/{id})."""
+    from utils.process_jobs import enqueue_job, public_job_view
+
+    mode = (period_mode or "harian").strip().lower()
+    if mode not in {"harian", "bulanan"}:
+        raise HTTPException(status_code=400, detail="period_mode harus harian atau bulanan")
+
+    date_iso = (date or "").strip()
+    month_yyyy_mm = (month or "").strip()
+    day_cutoff = (update_day or "2").strip()
+
+    if mode == "harian":
+        if not date_iso:
+            date_iso = datetime.now().strftime("%Y-%m-%d")
+        try:
+            datetime.strptime(date_iso, "%Y-%m-%d")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="Format tanggal upload harus YYYY-MM-DD") from e
+    else:
+        if not month_yyyy_mm:
+            month_yyyy_mm = date_iso[:7] if date_iso else datetime.now().strftime("%Y-%m")
+        try:
+            datetime.strptime(f"{month_yyyy_mm}-01", "%Y-%m-%d")
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail="Format bulan harus YYYY-MM") from e
+        if day_cutoff not in {"2", "8"}:
+            raise HTTPException(status_code=400, detail="update_day harus 2 atau 8")
+
     MAX_FILE_SIZE = 300 * 1024 * 1024
     if request.headers.get("content-length"):
         if int(request.headers["content-length"]) > MAX_FILE_SIZE:
             raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
 
-    try:
-        await file.seek(0)
-        content = await file.read()
-
-        try:
-            df = pd.read_excel(io.BytesIO(content), dtype=str)
-        except Exception:
-            try:
-                df = pd.read_csv(
-                    io.BytesIO(content), dtype=str, sep=None,
-                    engine="python", keep_default_na=False,
-                )
-            except UnicodeDecodeError:
-                df = pd.read_csv(
-                    io.BytesIO(content), dtype=str, sep=None,
-                    engine="python", encoding="latin1", keep_default_na=False,
-                )
-
-        df.columns = [str(c).strip() for c in df.columns]
-        df = df.fillna("")
-
-        KIRIMAN_YES_DIR.mkdir(parents=True, exist_ok=True)
-        if KIRIMAN_YES_FILE.exists():
-            archive_dir = KIRIMAN_YES_DIR / "archive"
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            shutil.move(str(KIRIMAN_YES_FILE), str(archive_dir / f"kiriman_yes_data_{ts}.csv"))
-
-        df.to_csv(KIRIMAN_YES_FILE, index=False)
-
-        meta_path = KIRIMAN_YES_FILE.parent / (KIRIMAN_YES_FILE.name + ".meta")
-        with open(meta_path, "w") as mf:
-            json.dump(
-                {
-                    "original_filename": file.filename,
-                    "uploaded_by": current_user.email,
-                    "timestamp": datetime.now().isoformat(),
-                },
-                mf,
-            )
-
-        with open(KIRIMAN_YES_DIR / "upload_log.jsonl", "a") as lf:
-            lf.write(
-                json.dumps(
-                    {
-                        "filename": "kiriman_yes_data.csv",
-                        "original_filename": file.filename,
-                        "uploaded_by": current_user.email,
-                        "timestamp": datetime.now().isoformat(),
-                    }
-                )
-                + "\n"
-            )
-
-        create_notification(
-            session,
-            title="Upload Success",
-            message=f"Database Kiriman Yes ({file.filename}) uploaded successfully.",
-            type="success",
-            user_id=current_user.id,
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".csv", ".xlsx", ".xls"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload harus berformat .csv / .xlsx / .xls",
         )
 
-        return {
-            "message": "Database Kiriman Yes uploaded successfully",
-            "filename": file.filename,
-            "saved_as": str(KIRIMAN_YES_FILE),
-            "rows": len(df),
-            "user": current_user.email,
-        }
+    await file.seek(0)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="File upload kosong.")
 
-    except Exception as e:
-        import traceback
-        error_msg = traceback.format_exc()
-        print(f"Error in upload_kiriman_yes: {e}")
-        with open("backend_error.log", "a") as lf:
-            lf.write(f"\n[{datetime.now()}] Error upload_kiriman_yes: {str(e)}\n{error_msg}\n")
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    job = enqueue_job(
+        kind="kiriman_yes",
+        user_id=int(current_user.id),
+        payload={
+            "period_mode": mode,
+            "date": date_iso,
+            "month": month_yyyy_mm,
+            "update_day": day_cutoff,
+            "suffix": suffix,
+            "uploaded_by": current_user.email or "",
+        },
+        raw_bytes=content,
+        raw_suffix=suffix,
+        original_filename=file.filename or "",
+    )
+    body = public_job_view(job)
+    body["job_id"] = job["id"]
+    body["message"] = "Upload diterima; pemrosesan dalam antrian"
+    return JSONResponse(status_code=202, content=body)
 
 
 @router.get("/download/kiriman-yes")
-async def download_kiriman_yes(current_user: User = Depends(get_current_active_user)):
-    if not KIRIMAN_YES_FILE.exists():
+async def download_kiriman_yes(
+    date: Optional[str] = None,
+    period_mode: str = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    from utils.kiriman_yes import period_label, resolve_data_path, resolve_period
+
+    mode, date_iso, month_v, day_v = resolve_period(
+        period_mode,
+        date=date,
+        month=month,
+        update_day=update_day,
+    )
+    path = resolve_data_path(mode, date=date_iso, month=month_v, update_day=day_v)
+    if not path or not path.is_file():
         raise HTTPException(
             status_code=404,
             detail="File Kiriman Yes belum tersedia. Upload terlebih dahulu.",
         )
+    label = period_label(mode, date=date_iso, month=month_v, update_day=day_v)
+    if mode == "harian":
+        fname = f"database_kiriman_yes_{date_iso}.csv"
+    else:
+        fname = f"database_kiriman_yes_{month_v}_tgl{day_v}.csv"
     return FileResponse(
-        path=str(KIRIMAN_YES_FILE),
+        path=str(path),
         media_type="text/csv",
-        filename="database_kiriman_yes.csv",
+        filename=fname,
+        headers={"X-Period-Label": label},
     )
 
 
@@ -3421,15 +3637,77 @@ async def get_kiriman_yes_status_pod(current_user: User = Depends(get_current_ac
 async def get_kiriman_yes_pivot(
     table: str = "database",
     status_pod: Optional[str] = None,
+    cabang: Optional[str] = None,
+    origin: Optional[str] = None,
+    date: Optional[str] = None,
+    period_mode: str = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
     current_user: User = Depends(get_current_active_user),
 ):
     table_key = (table or "database").strip().lower()
     if table_key not in ("database", "ots"):
         raise HTTPException(status_code=400, detail="table harus 'database' atau 'ots'")
+    mode = (period_mode or "harian").strip().lower()
+    if mode not in {"harian", "bulanan"}:
+        raise HTTPException(status_code=400, detail="period_mode harus harian atau bulanan")
     try:
-        return _build_kiriman_yes_pivot(table=table_key, status_pod=status_pod)
+        return _build_kiriman_yes_pivot(
+            table=table_key,
+            status_pod=status_pod,
+            cabang=cabang,
+            origin=origin,
+            date=date,
+            period_mode=mode,
+            month=month,
+            update_day=update_day,
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal membangun pivot: {str(e)}")
+
+
+@router.get("/api/kiriman-yes/rows")
+async def get_kiriman_yes_rows(
+    status_pod: Optional[str] = None,
+    cabang: Optional[str] = None,
+    origin: Optional[str] = None,
+    lt: Optional[str] = None,
+    date: Optional[str] = None,
+    period_mode: str = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+    page: int = 1,
+    limit: int = 0,
+    q: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Tabel detail Kiriman YES (header penuh) + search/paging/filter."""
+    from utils.kiriman_yes import list_kiriman_yes_detail
+    from utils.excel_worker import run_in_excel_worker
+
+    mode = (period_mode or "harian").strip().lower()
+    if mode not in {"harian", "bulanan"}:
+        raise HTTPException(status_code=400, detail="period_mode harus harian atau bulanan")
+
+    try:
+        return await run_in_excel_worker(
+            list_kiriman_yes_detail,
+            status_pod=status_pod,
+            cabang=cabang,
+            origin=origin,
+            lt=lt,
+            date=date,
+            period_mode=mode,
+            month=month,
+            update_day=update_day,
+            page=page,
+            limit=limit,
+            q=q,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Gagal membaca detail Kiriman YES: {e!s}"
+        ) from e
 
 
 @router.post("/upload-all-shipment-master-inbound")

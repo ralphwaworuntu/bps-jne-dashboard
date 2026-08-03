@@ -426,13 +426,13 @@ export default function ShipmentRowsTable({
                     <table className="min-w-max border-collapse text-left">
                         <thead>
                             <tr>
-                                {columns.map((col) => {
+                                {columns.map((col, colIdx) => {
                                     const active = Boolean(
                                         columnFilters[col] || externalFilters[col]
                                     );
                                     return (
                                         <th
-                                            key={col}
+                                            key={`${col}__${colIdx}`}
                                             className="sticky top-0 z-[1] whitespace-nowrap border-b border-border bg-[#f3f4f6] px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-foreground"
                                         >
                                             <div className="flex items-center gap-1">
@@ -536,11 +536,11 @@ export default function ShipmentRowsTable({
                                         style={{ height: DETAIL_ROW_HEIGHT }}
                                         className="odd:bg-white even:bg-muted/20 hover:bg-sky-50/60"
                                     >
-                                        {columns.map((col) => {
+                                        {columns.map((col, colIdx) => {
                                             const text = cellText(row, col);
                                             return (
                                                 <td
-                                                    key={col}
+                                                    key={`${col}__${colIdx}`}
                                                     className="max-w-[280px] truncate whitespace-nowrap border-b border-border/60 px-3 py-1.5 text-xs text-foreground"
                                                     title={text}
                                                 >

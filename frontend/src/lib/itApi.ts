@@ -70,11 +70,13 @@ export async function listRoles(token: string): Promise<RoleOption[]> {
 }
 
 export async function listUsers(token: string, q?: string): Promise<ITUser[]> {
-    const url = new URL(`${API_URL}/it/users`);
-    if (q?.trim()) url.searchParams.set("q", q.trim());
-    const res = await fetch(url.toString(), {
-        headers: authHeaders(token),
-    });
+    const params = new URLSearchParams();
+    if (q?.trim()) params.set("q", q.trim());
+    const qs = params.toString();
+    const res = await fetch(
+        `${API_URL}/it/users${qs ? `?${qs}` : ""}`,
+        { headers: authHeaders(token) }
+    );
     if (!res.ok) throw new Error(await parseError(res));
     return res.json();
 }
@@ -124,9 +126,8 @@ export async function listErrorLogs(
     token: string,
     limit = 100
 ): Promise<SystemErrorLog[]> {
-    const url = new URL(`${API_URL}/it/error-logs`);
-    url.searchParams.set("limit", String(limit));
-    const res = await fetch(url.toString(), {
+    const params = new URLSearchParams({ limit: String(limit) });
+    const res = await fetch(`${API_URL}/it/error-logs?${params.toString()}`, {
         headers: authHeaders(token),
     });
     if (!res.ok) throw new Error(await parseError(res));
@@ -137,6 +138,92 @@ export async function clearErrorLogs(token: string): Promise<{ deleted: number }
     const res = await fetch(`${API_URL}/it/error-logs`, {
         method: "DELETE",
         headers: authHeaders(token),
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export type SysServiceStatus = {
+    status: string;
+    latency_ms?: number | null;
+    backend?: string;
+    detail?: string;
+    workers?: number;
+    active_tasks?: number;
+};
+
+export type SysPerformance = {
+    collected_at: string;
+    host: {
+        hostname: string;
+        platform: string;
+        uptime_seconds: number | null;
+    };
+    cpu: {
+        percent: number;
+        count: number;
+        load_avg: Array<number | null>;
+    };
+    memory: {
+        total_bytes: number;
+        used_bytes: number;
+        percent: number;
+    };
+    disk: Array<{
+        mount: string;
+        total_bytes: number;
+        used_bytes: number;
+        percent: number;
+    }>;
+    services: {
+        api: SysServiceStatus;
+        database: SysServiceStatus;
+        redis: SysServiceStatus;
+        celery: SysServiceStatus;
+    };
+    jobs: {
+        queued: number;
+        running: number;
+        failed_last_24h: number;
+        completed_last_24h: number;
+        success_rate_24h: number;
+        processing_score: number;
+        recent: Array<{
+            id: string;
+            kind: string;
+            status: string;
+            percent: number;
+            message: string;
+            updated_at?: string;
+        }>;
+    };
+    errors: {
+        last_24h: number;
+        critical_last_24h: number;
+        stability_score: number;
+    };
+    uploads: {
+        tracked_files: number;
+        newest_age_hours: number | null;
+        activity_score: number;
+    };
+    gauges: {
+        overall: number;
+        backend: number;
+        processing: number;
+        hardware: number;
+        traffic: number;
+        stability: number;
+        cpu: number;
+        memory: number;
+        disk: number;
+    };
+};
+
+export async function getSysPerformance(token: string): Promise<SysPerformance> {
+    const res = await fetch(`${API_URL}/it/sys-performance`, {
+        headers: authHeaders(token),
+        cache: "no-store",
     });
     if (!res.ok) throw new Error(await parseError(res));
     return res.json();

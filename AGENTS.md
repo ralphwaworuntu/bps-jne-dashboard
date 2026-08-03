@@ -22,7 +22,7 @@ Kerjakan berurutan jika environment belum siap:
    copy .env.example .env
    ```
    (PowerShell: `Copy-Item .env.example .env`)  
-   Edit `backend/.env` — set `JWT_SECRET_KEY` (string acak panjang).
+   Edit `backend/.env` — set `JWT_SECRET_KEY` (string acak panjang). Untuk Fase 3 lokal biarkan `DATABASE_URL` + `REDIS_URL` seperti di example.
 
 2. **Backend dependencies**
    ```bash
@@ -38,11 +38,32 @@ Kerjakan berurutan jika environment belum siap:
    npm install
    ```
 
-4. **Jalankan server (dua terminal)**
-   - Backend: `cd backend` → `.\venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000`
-   - Frontend: `cd frontend` → `npm run dev -- --hostname 0.0.0.0 --port 3000`
+4. **Fase 3 lokal — Postgres + Redis (Docker Desktop harus Running)**
+   ```bash
+   # dari root repo
+   docker compose up -d
+   ```
+   Lalu siapkan schema + data (sekali, dari folder `backend`):
+   ```bash
+   cd backend
+   # Schema: create_all + stamp (baseline Alembic adalah no-op untuk DB baru)
+   .\venv\Scripts\python.exe -c "from database import create_db_and_tables; create_db_and_tables()"
+   .\venv\Scripts\python.exe -m alembic stamp head
+   .\venv\Scripts\python.exe scripts\migrate_sqlite_to_postgres.py
+   ```
+   Catatan: Postgres Docker dipublish di **host port 5433** (`5433:5432`) agar tidak bentrok dengan Postgres Windows lokal di 5432.
+5. **Jalankan server (satu klik atau manual)**
+   - **Satu klik:** double-click `start-local.bat` di root repo (atau jalankan `start-local.ps1`).  
+     Skrip akan: `docker compose up -d` → buka 3 jendela (API :8000, Celery, Frontend :3000).
+   - Manual:
+     - Docker: biarkan `postgres` + `redis` tetap up (`docker compose up -d`)
+     - Backend API: `cd backend` → `.\venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000`
+     - Celery worker: `cd backend` → `.\venv\Scripts\celery.exe -A celery_app.celery worker --loglevel=INFO --pool=threads --concurrency=2`
+     - Frontend: `cd frontend` → `npm run dev -- --hostname 0.0.0.0 --port 3000`
 
-5. **Akses**
+   Darurat tanpa Docker: hapus/komentari `DATABASE_URL` & set `USE_CELERY=0` di `.env` → kembali ke SQLite + antrian in-process.
+
+6. **Akses**
    - Lokal: http://localhost:3000  
    - API docs: http://localhost:8000/docs  
    - LAN: http://`<IP-WiFi>`:3000 — pastikan `frontend/next.config.ts` → `allowedDevOrigins` berisi IP laptop tersebut.
@@ -50,7 +71,8 @@ Kerjakan berurutan jika environment belum siap:
 ## Yang SUDAH ada di Git (jangan recreate dari nol)
 
 - Kode frontend/backend, routers, utils, Alembic migrations
-- `backend/database.db` (data lokal yang di-track)
+- `backend/database.db` (data lokal yang di-track; sumber migrasi ke Postgres)
+- `docker-compose.yml` (Postgres 16 + Redis 7 lokal)
 - Upload di `backend/uploads/` (termasuk file besar CSV/XLSX)
 - Docs: `Ekstraksi_Heading_Kolom.md`, `proses take out data inbound.md`
 
@@ -63,7 +85,8 @@ Kerjakan berurutan jika environment belum siap:
 - UN RUNSHEET: pipeline di `backend/utils/un_runsheet.py`.
 - **Olah data besar (wajib):** upload lewat job async (`utils/process_jobs.py` + `GET /api/jobs/{id}`); UI progress via `frontend/src/lib/uploadJobProgress.ts`.
 - **Hasil siap pakai:** hitung sekali saat job (enrich/pipeline), simpan CSV/cache per tanggal atau bulan; tampilan/export/pivot **baca hasil**, jangan hitung ulang. CTC: `ctc_daily` / `ctc_monthly`. UN RUNSHEET: `{date}.csv` + `{date}.filtered.csv` + `{date}.pivot.json`.
-- Fase 3 (nanti): Postgres / Redis-Celery / worker terpisah — kontrak `job_id` + cache periode tetap.
+- **Fase 3 lokal:** Postgres (`DATABASE_URL`) + Redis (`REDIS_URL`) + Celery worker (`celery_app.py`); concurrency default 2; kontrak `job_id` tidak berubah.
+
 ## Jika user bilang “jalankan / setup project”
 
-AI harus: cek `.env` + venv + `node_modules` → buat yang kurang → start backend:8000 + frontend:3000 → verifikasi HTTP 200.
+AI harus: cek `.env` + venv + `node_modules` + Docker (opsional Fase 3) → buat yang kurang → `docker compose up -d` jika Fase 3 → start backend:8000 + celery worker + frontend:3000 → verifikasi HTTP 200.

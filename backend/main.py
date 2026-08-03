@@ -52,6 +52,23 @@ async def log_requests(request: Request, call_next):
         response = await call_next(request)
         return response
     except Exception as e:
+        from fastapi import HTTPException as FastAPIHTTPException
+        from fastapi.exceptions import RequestValidationError
+        from pydantic import ValidationError
+
+        # Client / expected errors — jangan spam Log Error sebagai CRITICAL
+        if isinstance(e, FastAPIHTTPException):
+            return JSONResponse(
+                status_code=e.status_code,
+                content={"detail": e.detail},
+                headers=dict(e.headers) if e.headers else None,
+            )
+        if isinstance(e, (RequestValidationError, ValidationError)):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "Validation error"},
+            )
+
         import traceback
 
         error_msg = traceback.format_exc()

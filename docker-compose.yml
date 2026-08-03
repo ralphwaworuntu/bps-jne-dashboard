@@ -1,0 +1,40 @@
+# BPS JNE Dashboard — layanan lokal Fase 3 (Postgres + Redis)
+# Jalankan: docker compose up -d
+# Stop:     docker compose down
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bps_jne_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bps
+      POSTGRES_PASSWORD: bps_local
+      POSTGRES_DB: bps_jne
+    ports:
+      - "5433:5432"
+    volumes:
+      - bps_jne_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bps -d bps_jne"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: bps_jne_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - bps_jne_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  bps_jne_pgdata:
+  bps_jne_redisdata:

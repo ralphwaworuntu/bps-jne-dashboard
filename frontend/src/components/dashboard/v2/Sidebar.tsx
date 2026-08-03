@@ -27,6 +27,7 @@ import {
     Boxes,
     Building2,
     Database,
+    Activity,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -385,6 +386,35 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                             }`}
                                         >
                                             Log Error
+                                        </span>
+                                    )}
+                                </div>
+                            </Link>
+
+                            <Link href="/dashboard/v2/it/sys-performance" className="group cursor-pointer">
+                                <div
+                                    className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${
+                                        pathname?.startsWith('/dashboard/v2/it/sys-performance')
+                                            ? 'bg-muted'
+                                            : 'bg-white hover:bg-muted'
+                                    } ${isCollapsed ? 'justify-center' : ''}`}
+                                >
+                                    <Activity
+                                        className={`size-6 shrink-0 transition-all duration-300 ${
+                                            pathname?.startsWith('/dashboard/v2/it/sys-performance')
+                                                ? 'text-foreground'
+                                                : 'text-secondary group-hover:text-foreground'
+                                        }`}
+                                    />
+                                    {!isCollapsed && (
+                                        <span
+                                            className={`font-medium transition-all duration-300 ${
+                                                pathname?.startsWith('/dashboard/v2/it/sys-performance')
+                                                    ? 'font-semibold text-foreground'
+                                                    : 'text-secondary group-hover:text-foreground'
+                                            }`}
+                                        >
+                                            Sys Performance
                                         </span>
                                     )}
                                 </div>

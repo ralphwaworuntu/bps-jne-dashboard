@@ -106,6 +106,31 @@ def get_system_info(current_user: User = Depends(get_current_active_user)):
     tpl_outstanding = _all_shipment_template_file("outstanding")
     ctc_range_start, ctc_range_end = _range_from_mtime(tpl_ctc)
 
+    def _kiriman_yes_path():
+        try:
+            from utils.kiriman_yes import (
+                data_path_for_period,
+                latest_upload_date,
+                migrate_legacy_if_needed,
+                resolve_data_path,
+            )
+
+            migrate_legacy_if_needed()
+            d = latest_upload_date("harian")
+            if d:
+                return resolve_data_path("harian", date=d) or data_path_for_period(
+                    "harian", date=d
+                )
+            b = latest_upload_date("bulanan")
+            if b and "|" in b:
+                m, day = b.split("|", 1)
+                return resolve_data_path("bulanan", month=m, update_day=day)
+        except Exception:
+            pass
+        return KIRIMAN_YES_FILE
+
+    ky_path = _kiriman_yes_path()
+
     return {
         "master_last_update": get_file_time(MASTER_DATA_FILE),
         "master_117_last_update": get_file_time(MASTER_DATA_117_FILE),
@@ -145,8 +170,8 @@ def get_system_info(current_user: User = Depends(get_current_active_user)):
         "master_report_filename": get_original_filename(MASTER_REPORT_FILE),
         "cakupan_last_update": get_file_time(CAKUPAN_FILE),
         "cakupan_filename": get_original_filename(CAKUPAN_FILE),
-        "kiriman_yes_last_update": get_file_time(KIRIMAN_YES_FILE),
-        "kiriman_yes_filename": get_original_filename(KIRIMAN_YES_FILE),
+        "kiriman_yes_last_update": get_file_time(ky_path),
+        "kiriman_yes_filename": get_original_filename(ky_path),
         "all_shipment_master_inbound_last_update": get_file_time(master_inbound),
         "all_shipment_master_inbound_filename": get_original_filename(master_inbound),
         "all_inbound_ctc_last_update": get_file_time(tpl_ctc),

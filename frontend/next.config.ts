@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   /* config options here */
   // reactCompiler: true, // Commenting out to avoid potential type issues if experimental
+  transpilePackages: ["echarts", "zrender", "echarts-for-react"],
   // Izinkan akses LAN (Next.js block cross-origin di mode dev bila IP tidak terdaftar).
   // Update IP WiFi di sini jika berubah.
   allowedDevOrigins: [

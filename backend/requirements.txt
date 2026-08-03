@@ -17,3 +17,7 @@ ocrmypdf==17.4.0
 pypdf==6.9.2
 pydantic==2.12.5
 alembic==1.16.5
+psycopg[binary]==3.2.13
+celery==5.5.3
+redis==6.2.0
+psutil==7.0.0
