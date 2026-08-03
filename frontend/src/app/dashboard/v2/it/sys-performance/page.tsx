@@ -9,6 +9,7 @@ import {
     Boxes,
     Database,
     FolderTree,
+    Gauge,
     HardDrive,
     Loader2,
     RefreshCw,
@@ -16,7 +17,12 @@ import {
     Wifi,
 } from "lucide-react";
 import { useToast } from "@/context/ToastContext";
-import { getSysPerformance, type SysPerformance } from "@/lib/itApi";
+import {
+    getSysPerformance,
+    runSysSpeedTest,
+    type SysPerformance,
+    type SysSpeedTestResult,
+} from "@/lib/itApi";
 
 function formatBytes(n: number | null | undefined) {
     if (n == null || n <= 0) return "—";
@@ -62,6 +68,18 @@ function serviceTone(status: string) {
     return "bg-red-100 text-red-800";
 }
 
+function formatMbps(n: number | null | undefined) {
+    if (n == null || Number.isNaN(n)) return "—";
+    if (n >= 100) return `${n.toFixed(0)} Mbps`;
+    if (n >= 10) return `${n.toFixed(1)} Mbps`;
+    return `${n.toFixed(2)} Mbps`;
+}
+
+function formatMs(n: number | null | undefined) {
+    if (n == null || Number.isNaN(n)) return "—";
+    return `${n.toFixed(1)} ms`;
+}
+
 function frontendScoreFromClient(apiMs: number | null, heapPct: number | null): number {
     let score = 75;
     if (apiMs != null) {
@@ -84,6 +102,8 @@ export default function SysPerformancePage() {
     const [apiLatencyMs, setApiLatencyMs] = useState<number | null>(null);
     const [heapPct, setHeapPct] = useState<number | null>(null);
     const [autoRefresh, setAutoRefresh] = useState(true);
+    const [speedTesting, setSpeedTesting] = useState(false);
+    const [speedResult, setSpeedResult] = useState<SysSpeedTestResult | null>(null);
 
     const sampleClientMetrics = useCallback(() => {
         const perf = performance as Performance & {
@@ -111,6 +131,9 @@ export default function SysPerformancePage() {
             setApiLatencyMs(Math.round(performance.now() - t0));
             sampleClientMetrics();
             setData(res);
+            if (res.network?.last_speedtest) {
+                setSpeedResult(res.network.last_speedtest);
+            }
         } catch (e) {
             const msg = e instanceof Error ? e.message : "error";
             if (msg.toLowerCase().includes("akses ditolak") || msg.includes("403")) {
@@ -133,12 +156,63 @@ export default function SysPerformancePage() {
     }, [router, load]);
 
     useEffect(() => {
-        if (!autoRefresh) return;
+        if (!autoRefresh || speedTesting) return;
         const id = window.setInterval(() => {
             load();
         }, 10000);
         return () => window.clearInterval(id);
-    }, [autoRefresh, load]);
+    }, [autoRefresh, load, speedTesting]);
+
+    const handleSpeedTest = useCallback(async () => {
+        const token = localStorage.getItem("token");
+        if (!token) {
+            router.push("/");
+            return;
+        }
+        setSpeedTesting(true);
+        try {
+            const res = await runSysSpeedTest(token);
+            setSpeedResult(res);
+            setData((prev) =>
+                prev
+                    ? {
+                          ...prev,
+                          network: {
+                              ...(prev.network || {
+                                  latency: {
+                                      status: "ok",
+                                      latency_ms: res.latency_ms,
+                                      jitter_ms: res.jitter_ms,
+                                  },
+                                  interface: {
+                                      bytes_sent: 0,
+                                      bytes_recv: 0,
+                                      tx_mbps: null,
+                                      rx_mbps: null,
+                                  },
+                              }),
+                              last_speedtest: res,
+                          },
+                      }
+                    : prev
+            );
+            if (res.status === "error") {
+                showToast(res.detail || "Speed test gagal.", "error");
+            } else {
+                showToast(
+                    `Speed test: ↓ ${formatMbps(res.download_mbps)} · ↑ ${formatMbps(res.upload_mbps)}`,
+                    "success"
+                );
+            }
+        } catch (e) {
+            showToast(
+                e instanceof Error ? e.message : "Gagal menjalankan speed test.",
+                "error"
+            );
+        } finally {
+            setSpeedTesting(false);
+        }
+    }, [router, showToast]);
 
     const g = data?.gauges;
     const feScore = frontendScoreFromClient(apiLatencyMs, heapPct);
@@ -310,6 +384,105 @@ export default function SysPerformancePage() {
                                     }
                                 />
                             </div>
+                        </section>
+
+                        <section className="rounded-[var(--radius-card)] border border-border bg-white p-5">
+                            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex items-start gap-2">
+                                    <Gauge className="mt-0.5 size-5 text-primary" />
+                                    <div>
+                                        <h3 className="font-semibold text-foreground">
+                                            Koneksi VPS → Internet
+                                        </h3>
+                                        <p className="text-xs text-secondary">
+                                            Latency/jitter diukur tiap refresh (TCP ke 1.1.1.1).
+                                            Download/upload hanya saat tombol uji ditekan
+                                            (Cloudflare, ~5 MB / ~2 MB).
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => void handleSpeedTest()}
+                                    disabled={speedTesting}
+                                    className="inline-flex items-center gap-2 rounded-[var(--radius-button)] bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+                                >
+                                    {speedTesting ? (
+                                        <Loader2 className="size-4 animate-spin" aria-hidden />
+                                    ) : (
+                                        <Wifi className="size-4" aria-hidden />
+                                    )}
+                                    {speedTesting ? "Menguji…" : "Uji kecepatan"}
+                                </button>
+                            </div>
+
+                            <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <StatPill
+                                    label="Latency"
+                                    valueLabel={formatMs(data.network?.latency?.latency_ms)}
+                                />
+                                <StatPill
+                                    label="Jitter"
+                                    valueLabel={formatMs(data.network?.latency?.jitter_ms)}
+                                />
+                                <StatPill
+                                    label="NIC RX"
+                                    valueLabel={formatMbps(data.network?.interface?.rx_mbps)}
+                                />
+                                <StatPill
+                                    label="NIC TX"
+                                    valueLabel={formatMbps(data.network?.interface?.tx_mbps)}
+                                />
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                                <StatPill
+                                    label="Download"
+                                    valueLabel={formatMbps(
+                                        speedResult?.download_mbps ??
+                                            data.network?.last_speedtest?.download_mbps
+                                    )}
+                                />
+                                <StatPill
+                                    label="Upload"
+                                    valueLabel={formatMbps(
+                                        speedResult?.upload_mbps ??
+                                            data.network?.last_speedtest?.upload_mbps
+                                    )}
+                                />
+                                <StatPill
+                                    label="Test latency"
+                                    valueLabel={formatMs(
+                                        speedResult?.latency_ms ??
+                                            data.network?.last_speedtest?.latency_ms
+                                    )}
+                                />
+                                <StatPill
+                                    label="Test jitter"
+                                    valueLabel={formatMs(
+                                        speedResult?.jitter_ms ??
+                                            data.network?.last_speedtest?.jitter_ms
+                                    )}
+                                />
+                            </div>
+
+                            <p className="mt-3 text-xs text-secondary">
+                                Probe: {data.network?.latency?.probe || "—"}
+                                {" · "}
+                                NIC total RX/TX:{" "}
+                                {formatBytes(data.network?.interface?.bytes_recv)} /{" "}
+                                {formatBytes(data.network?.interface?.bytes_sent)}
+                                {speedResult?.tested_at ||
+                                data.network?.last_speedtest?.tested_at
+                                    ? ` · Last test ${new Date(
+                                          (speedResult?.tested_at ||
+                                              data.network?.last_speedtest?.tested_at)!
+                                      ).toLocaleString("id-ID")}`
+                                    : " · Belum ada speed test"}
+                                {speedResult?.detail || data.network?.last_speedtest?.detail
+                                    ? ` · ${speedResult?.detail || data.network?.last_speedtest?.detail}`
+                                    : ""}
+                            </p>
                         </section>
 
                         <section className="grid gap-4 lg:grid-cols-2">
@@ -787,13 +960,23 @@ function MetaCard({
     );
 }
 
-function StatPill({ label, value }: { label: string; value: number }) {
+function StatPill({
+    label,
+    value,
+    valueLabel,
+}: {
+    label: string;
+    value?: number;
+    valueLabel?: string;
+}) {
     return (
         <div className="rounded-xl bg-muted/70 px-3 py-2 text-center">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">
                 {label}
             </p>
-            <p className="text-xl font-bold text-foreground">{value}</p>
+            <p className="text-xl font-bold text-foreground">
+                {valueLabel ?? (value != null ? value : "—")}
+            </p>
         </div>
     );
 }

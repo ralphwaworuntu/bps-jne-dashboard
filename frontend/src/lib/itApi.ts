@@ -172,6 +172,22 @@ export type SysJobKindStats = {
     sample_size: number;
 };
 
+export type SysSpeedTestResult = {
+    status: string;
+    tested_at: string;
+    provider?: string;
+    latency_ms: number | null;
+    jitter_ms: number | null;
+    download_mbps: number | null;
+    upload_mbps: number | null;
+    download_bytes?: number;
+    upload_bytes?: number;
+    download_ms?: number | null;
+    upload_ms?: number | null;
+    probe?: string;
+    detail?: string | null;
+};
+
 export type SysPerformance = {
     collected_at: string;
     host: {
@@ -259,6 +275,27 @@ export type SysPerformance = {
         sized_files?: number;
         folders?: Array<{ name: string; bytes: number; files: number }>;
     };
+    network?: {
+        latency: {
+            status: string;
+            probe?: string;
+            latency_ms: number | null;
+            jitter_ms: number | null;
+            min_ms?: number | null;
+            max_ms?: number | null;
+            samples?: number;
+            detail?: string;
+        };
+        interface: {
+            bytes_sent: number;
+            bytes_recv: number;
+            tx_mbps: number | null;
+            rx_mbps: number | null;
+            sample_seconds?: number;
+            detail?: string;
+        };
+        last_speedtest?: SysSpeedTestResult | null;
+    };
     gauges: {
         overall: number;
         backend: number;
@@ -275,6 +312,16 @@ export type SysPerformance = {
 
 export async function getSysPerformance(token: string): Promise<SysPerformance> {
     const res = await fetch(`${API_URL}/it/sys-performance`, {
+        headers: authHeaders(token),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export async function runSysSpeedTest(token: string): Promise<SysSpeedTestResult> {
+    const res = await fetch(`${API_URL}/it/sys-performance/speed-test`, {
+        method: "POST",
         headers: authHeaders(token),
         cache: "no-store",
     });

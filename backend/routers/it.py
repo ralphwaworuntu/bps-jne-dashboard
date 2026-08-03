@@ -247,6 +247,17 @@ def get_sys_performance(
     return collect_sys_performance()
 
 
+@router.post("/sys-performance/speed-test")
+def run_sys_performance_speed_test(
+    current_user: User = Depends(get_current_active_user),
+):
+    """Uji aktif kecepatan VPS → internet (download/upload/latency/jitter)."""
+    require_it_admin(current_user)
+    from utils.sys_performance import run_internet_speedtest
+
+    return run_internet_speedtest()
+
+
 @router.get("/error-logs", response_model=list[SystemErrorLogRead])
 def list_error_logs(
     session: Session = Depends(get_session),

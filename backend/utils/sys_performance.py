@@ -39,6 +39,16 @@ _UPLOAD_TOP_DIRS = (
     "alc_penjualan",
 )
 
+# Network probe targets (VPS → internet). TCP avoids needing root for ICMP.
+_NET_PROBE_HOST = "1.1.1.1"
+_NET_PROBE_PORT = 443
+_SPEEDTEST_DOWN_URL = "https://speed.cloudflare.com/__down?bytes={bytes}"
+_SPEEDTEST_UP_URL = "https://speed.cloudflare.com/__up"
+_SPEEDTEST_RESULT_PATH = Path("uploads/jobs/_sys_speedtest_last.json")
+_DOWNLOAD_TEST_BYTES = 5 * 1024 * 1024  # 5 MiB
+_UPLOAD_TEST_BYTES = 2 * 1024 * 1024  # 2 MiB
+
+
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
     return max(lo, min(hi, float(value)))
@@ -62,6 +72,213 @@ def _score_from_usage(percent: float) -> float:
     if p >= 95:
         return 5.0
     return _clamp(100.0 - (p - 50.0) * (95.0 / 45.0))
+
+
+def _tcp_rtt_ms(host: str, port: int, timeout: float = 2.0) -> Optional[float]:
+    t0 = time.perf_counter()
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            pass
+        return round((time.perf_counter() - t0) * 1000, 2)
+    except OSError:
+        return None
+
+
+def _network_latency_jitter(samples: int = 5) -> Dict[str, Any]:
+    rtts: List[float] = []
+    for _ in range(max(3, samples)):
+        ms = _tcp_rtt_ms(_NET_PROBE_HOST, _NET_PROBE_PORT)
+        if ms is not None:
+            rtts.append(ms)
+        time.sleep(0.05)
+    if not rtts:
+        return {
+            "status": "error",
+            "probe": f"{_NET_PROBE_HOST}:{_NET_PROBE_PORT}",
+            "latency_ms": None,
+            "jitter_ms": None,
+            "min_ms": None,
+            "max_ms": None,
+            "samples": 0,
+            "detail": "Gagal mengukur RTT ke internet",
+        }
+    avg = sum(rtts) / len(rtts)
+    jitter = 0.0
+    if len(rtts) > 1:
+        jitter = sum(abs(rtts[i] - rtts[i - 1]) for i in range(1, len(rtts))) / (
+            len(rtts) - 1
+        )
+    return {
+        "status": "ok",
+        "probe": f"{_NET_PROBE_HOST}:{_NET_PROBE_PORT}",
+        "latency_ms": round(avg, 2),
+        "jitter_ms": round(jitter, 2),
+        "min_ms": round(min(rtts), 2),
+        "max_ms": round(max(rtts), 2),
+        "samples": len(rtts),
+    }
+
+
+def _network_iface_throughput(sample_seconds: float = 0.45) -> Dict[str, Any]:
+    try:
+        import psutil
+    except ImportError:
+        return {
+            "bytes_sent": 0,
+            "bytes_recv": 0,
+            "tx_mbps": None,
+            "rx_mbps": None,
+            "detail": "psutil belum terpasang",
+        }
+
+    try:
+        c0 = psutil.net_io_counters()
+        t0 = time.perf_counter()
+        time.sleep(max(0.2, sample_seconds))
+        c1 = psutil.net_io_counters()
+        dt = max(0.001, time.perf_counter() - t0)
+        sent_delta = max(0, int(c1.bytes_sent) - int(c0.bytes_sent))
+        recv_delta = max(0, int(c1.bytes_recv) - int(c0.bytes_recv))
+        return {
+            "bytes_sent": int(c1.bytes_sent),
+            "bytes_recv": int(c1.bytes_recv),
+            "tx_mbps": round((sent_delta * 8) / dt / 1_000_000, 3),
+            "rx_mbps": round((recv_delta * 8) / dt / 1_000_000, 3),
+            "sample_seconds": round(dt, 3),
+        }
+    except Exception as e:
+        return {
+            "bytes_sent": 0,
+            "bytes_recv": 0,
+            "tx_mbps": None,
+            "rx_mbps": None,
+            "detail": str(e)[:160],
+        }
+
+
+def _read_last_speedtest() -> Optional[Dict[str, Any]]:
+    try:
+        if not _SPEEDTEST_RESULT_PATH.is_file():
+            return None
+        import json
+
+        data = json.loads(_SPEEDTEST_RESULT_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+def _write_last_speedtest(payload: Dict[str, Any]) -> None:
+    try:
+        import json
+
+        _SPEEDTEST_RESULT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _SPEEDTEST_RESULT_PATH.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        pass
+
+
+def _network_snapshot() -> Dict[str, Any]:
+    latency = _network_latency_jitter()
+    iface = _network_iface_throughput()
+    last = _read_last_speedtest()
+    return {
+        "latency": latency,
+        "interface": iface,
+        "last_speedtest": last,
+    }
+
+
+def run_internet_speedtest(
+    *,
+    download_bytes: int = _DOWNLOAD_TEST_BYTES,
+    upload_bytes: int = _UPLOAD_TEST_BYTES,
+) -> Dict[str, Any]:
+    """Active VPS→internet speed test (Cloudflare endpoints). On-demand only."""
+    import ssl
+    import urllib.request
+
+    latency = _network_latency_jitter(samples=6)
+    ctx = ssl.create_default_context()
+    ua = "BPS-JNE-Dashboard-SpeedTest/1.0"
+
+    download_mbps: Optional[float] = None
+    upload_mbps: Optional[float] = None
+    down_bytes = 0
+    up_bytes = 0
+    down_ms: Optional[float] = None
+    up_ms: Optional[float] = None
+    errors: List[str] = []
+
+    # --- Download ---
+    try:
+        url = _SPEEDTEST_DOWN_URL.format(bytes=int(download_bytes))
+        req = urllib.request.Request(url, headers={"User-Agent": ua})
+        t0 = time.perf_counter()
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
+            chunks = []
+            while True:
+                chunk = resp.read(256 * 1024)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        elapsed = max(0.001, time.perf_counter() - t0)
+        payload = b"".join(chunks)
+        down_bytes = len(payload)
+        down_ms = round(elapsed * 1000, 1)
+        download_mbps = round((down_bytes * 8) / elapsed / 1_000_000, 2)
+    except Exception as e:
+        errors.append(f"download: {e!s}"[:180])
+
+    # --- Upload ---
+    try:
+        body = os.urandom(int(upload_bytes))
+        req = urllib.request.Request(
+            _SPEEDTEST_UP_URL,
+            data=body,
+            method="POST",
+            headers={
+                "User-Agent": ua,
+                "Content-Type": "application/octet-stream",
+                "Content-Length": str(len(body)),
+            },
+        )
+        t0 = time.perf_counter()
+        with urllib.request.urlopen(req, timeout=60, context=ctx) as resp:
+            resp.read()
+        elapsed = max(0.001, time.perf_counter() - t0)
+        up_bytes = len(body)
+        up_ms = round(elapsed * 1000, 1)
+        upload_mbps = round((up_bytes * 8) / elapsed / 1_000_000, 2)
+    except Exception as e:
+        errors.append(f"upload: {e!s}"[:180])
+
+    status = "ok"
+    if download_mbps is None and upload_mbps is None:
+        status = "error"
+    elif errors:
+        status = "partial"
+
+    result = {
+        "status": status,
+        "tested_at": datetime.utcnow().isoformat() + "Z",
+        "provider": "cloudflare",
+        "latency_ms": latency.get("latency_ms"),
+        "jitter_ms": latency.get("jitter_ms"),
+        "download_mbps": download_mbps,
+        "upload_mbps": upload_mbps,
+        "download_bytes": down_bytes,
+        "upload_bytes": up_bytes,
+        "download_ms": down_ms,
+        "upload_ms": up_ms,
+        "probe": latency.get("probe"),
+        "detail": "; ".join(errors) if errors else None,
+    }
+    _write_last_speedtest(result)
+    return result
 
 
 def _percentile(sorted_vals: Sequence[float], pct: float) -> Optional[float]:
@@ -830,6 +1047,7 @@ def collect_sys_performance() -> Dict[str, Any]:
     errors = _errors_summary()
     uploads = _uploads_freshness()
     api_svc = _api_service_status(ports, units)
+    network = _network_snapshot()
 
     cpu_pct = float((host.get("cpu") or {}).get("percent") or 0)
     mem_pct = float((host.get("memory") or {}).get("percent") or 0)
@@ -866,8 +1084,11 @@ def collect_sys_performance() -> Dict[str, Any]:
             float(uploads["activity_score"])
             + _score_from_latency_ms(db.get("latency_ms"), good=20, bad=300)
             + float(jobs["processing_score"])
+            + _score_from_latency_ms(
+                (network.get("latency") or {}).get("latency_ms"), good=40, bad=250
+            )
         )
-        / 3.0,
+        / 4.0,
         1,
     )
 
@@ -906,6 +1127,7 @@ def collect_sys_performance() -> Dict[str, Any]:
         "jobs": jobs,
         "errors": errors,
         "uploads": uploads,
+        "network": network,
         "gauges": {
             "overall": overall,
             "backend": backend_score,
