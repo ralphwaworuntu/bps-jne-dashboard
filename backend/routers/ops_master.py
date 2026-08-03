@@ -69,6 +69,26 @@ def _parsed_path(kind: str) -> Path:
     return _kind_dir(kind) / f"{kind}.csv"
 
 
+def _as_posix_path(path: Path | str) -> Path:
+    """Normalize path from DB so Windows backslashes resolve on Linux VPS."""
+    return Path(str(path).replace("\\", "/").strip())
+
+
+def _path_str(path: Path) -> str:
+    """Persist relative paths with forward slashes (portable across OS)."""
+    return path.as_posix()
+
+
+def _resolve_existing_file(*candidates: Path | str | None) -> Optional[Path]:
+    for candidate in candidates:
+        if candidate is None or candidate == "":
+            continue
+        path = _as_posix_path(candidate)
+        if path.is_file():
+            return path
+    return None
+
+
 def _safe_filename(name: str) -> str:
     base = Path(name or "file").name
     cleaned = re.sub(r"[^a-zA-Z0-9._\-]", "_", base)
@@ -117,7 +137,7 @@ def _upload_to_dict(rec: OpsMasterDataUpload) -> dict:
 
 
 def _history_to_dict(rec: OpsMasterDataUpload) -> dict:
-    stored = Path(rec.stored_path)
+    stored = _resolve_existing_file(rec.stored_path)
     return {
         "id": rec.id,
         "kind": rec.kind,
@@ -126,7 +146,7 @@ def _history_to_dict(rec: OpsMasterDataUpload) -> dict:
         "uploaded_by": rec.uploaded_by_email,
         "created_at": rec.created_at.isoformat(),
         "is_active": bool(getattr(rec, "is_active", True)),
-        "downloadable": stored.is_file(),
+        "downloadable": stored is not None,
     }
 
 
@@ -155,14 +175,14 @@ def _archive_active_uploads(session: Session, normalized_kind: str) -> None:
     ).all()
 
     for rec in active_recs:
-        raw = Path(rec.stored_path)
-        parsed = Path(rec.parsed_path)
+        raw = _as_posix_path(rec.stored_path)
+        parsed = _as_posix_path(rec.parsed_path)
         new_raw = _move_to_archive(raw, archive_dir, ts)
         new_parsed = _move_to_archive(parsed, archive_dir, ts)
         if new_raw:
-            rec.stored_path = str(new_raw)
+            rec.stored_path = _path_str(new_raw)
         if new_parsed:
-            rec.parsed_path = str(new_parsed)
+            rec.parsed_path = _path_str(new_parsed)
         rec.is_active = False
         session.add(rec)
 
@@ -340,7 +360,7 @@ def delete_kind(
     ).all()
     for up in uploads:
         try:
-            invalidate_cache(Path(up.parsed_path))
+            invalidate_cache(_as_posix_path(up.parsed_path))
         except Exception:
             pass
         session.delete(up)
@@ -436,8 +456,8 @@ def download_master_data_upload(
     if not rec or rec.kind != normalized_kind:
         raise HTTPException(status_code=404, detail="Upload tidak ditemukan.")
 
-    stored = Path(rec.stored_path)
-    if not stored.is_file():
+    stored = _resolve_existing_file(rec.stored_path)
+    if stored is None:
         raise HTTPException(status_code=404, detail="File asli tidak ditemukan di server.")
 
     return FileResponse(
@@ -512,8 +532,8 @@ async def upload_master_data(
     record = OpsMasterDataUpload(
         kind=normalized_kind,
         original_filename=_safe_filename(file.filename or normalized_kind),
-        stored_path=str(raw_path),
-        parsed_path=str(parsed_path),
+        stored_path=_path_str(raw_path),
+        parsed_path=_path_str(parsed_path),
         row_count=int(len(df)),
         uploaded_by_user_id=current_user.id,
         uploaded_by_email=current_user.email,
@@ -563,11 +583,14 @@ async def get_master_data(
         .limit(1)
     ).first()
 
-    parsed_path = Path(record.parsed_path) if record else _parsed_path(normalized_kind)
+    parsed_path = _resolve_existing_file(
+        record.parsed_path if record else None,
+        _parsed_path(normalized_kind),
+    )
     columns = columns_for_kind(normalized_kind)
     label = label_for_kind(normalized_kind)
 
-    if not parsed_path.is_file():
+    if parsed_path is None:
         return {
             "items": [],
             "total": 0,
@@ -575,7 +598,7 @@ async def get_master_data(
             "limit": limit,
             "pages": 0,
             "columns": columns,
-            "upload": None,
+            "upload": _upload_to_dict(record) if record else None,
             "message": f"Data {label} belum diunggah.",
         }
 
