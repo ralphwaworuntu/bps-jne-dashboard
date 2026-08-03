@@ -286,10 +286,21 @@ def _port_open(host: str, port: int, timeout: float = 0.4) -> bool:
         return False
 
 
+def _find_systemctl() -> Optional[str]:
+    """Resolve systemctl even when systemd unit PATH is venv-only."""
+    found = shutil.which("systemctl")
+    if found:
+        return found
+    for candidate in ("/usr/bin/systemctl", "/bin/systemctl"):
+        if Path(candidate).is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def _systemd_units() -> List[Dict[str, Any]]:
     """Best-effort systemd is-active for bps-* units (Linux/VPS)."""
     results: List[Dict[str, Any]] = []
-    systemctl = shutil.which("systemctl")
+    systemctl = _find_systemctl()
     if not systemctl:
         for name in _UNIT_NAMES:
             results.append(
@@ -309,9 +320,13 @@ def _systemd_units() -> List[Dict[str, Any]]:
                 text=True,
                 timeout=2,
                 check=False,
+                env={**os.environ, "PATH": "/usr/bin:/bin:" + (os.environ.get("PATH") or "")},
             )
             active = (proc.stdout or "").strip() or "unknown"
-            results.append({"name": name, "active": active, "detail": None})
+            detail = None
+            if active == "unknown" and (proc.stderr or "").strip():
+                detail = (proc.stderr or "").strip()[:120]
+            results.append({"name": name, "active": active, "detail": detail})
         except Exception as e:
             results.append({"name": name, "active": "unknown", "detail": str(e)[:120]})
     return results
