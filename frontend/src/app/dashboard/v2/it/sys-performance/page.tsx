@@ -23,6 +23,7 @@ import {
     type SysPerformance,
     type SysSpeedTestResult,
 } from "@/lib/itApi";
+import { API_URL, authHeaders } from "@/config";
 
 function formatBytes(n: number | null | undefined) {
     if (n == null || n <= 0) return "—";
@@ -81,15 +82,16 @@ function formatMs(n: number | null | undefined) {
 }
 
 function frontendScoreFromClient(apiMs: number | null, heapPct: number | null): number {
-    let score = 75;
+    let score = 80;
     if (apiMs != null) {
-        if (apiMs < 200) score = 95;
-        else if (apiMs < 500) score = 85;
-        else if (apiMs < 1200) score = 65;
+        if (apiMs < 250) score = 96;
+        else if (apiMs < 600) score = 88;
+        else if (apiMs < 1200) score = 72;
+        else if (apiMs < 2500) score = 55;
         else score = 40;
     }
-    if (heapPct != null && heapPct > 85) score = Math.min(score, 45);
-    else if (heapPct != null && heapPct > 70) score = Math.min(score, 70);
+    if (heapPct != null && heapPct > 90) score = Math.min(score, 50);
+    else if (heapPct != null && heapPct > 80) score = Math.min(score, 70);
     return score;
 }
 
@@ -125,10 +127,20 @@ export default function SysPerformancePage() {
             return;
         }
         setLoading(true);
-        const t0 = performance.now();
         try {
+            // FE score = latency endpoint ringan, bukan payload Sys Performance penuh
+            const tLight = performance.now();
+            try {
+                await fetch(`${API_URL}/`, {
+                    headers: authHeaders(token),
+                    cache: "no-store",
+                });
+                setApiLatencyMs(Math.round(performance.now() - tLight));
+            } catch {
+                setApiLatencyMs(null);
+            }
+
             const res = await getSysPerformance(token);
-            setApiLatencyMs(Math.round(performance.now() - t0));
             sampleClientMetrics();
             setData(res);
             if (res.network?.last_speedtest) {
@@ -325,12 +337,12 @@ export default function SysPerformancePage() {
                                 <PerformanceGauge
                                     title="Processing"
                                     value={g.processing}
-                                    subtitle="Job CTC / UN RUNSHEET / YES"
+                                    subtitle="Sukses job 6 jam terakhir"
                                 />
                                 <PerformanceGauge
                                     title="Frontend"
                                     value={feScore}
-                                    subtitle="Latency fetch + heap browser"
+                                    subtitle="Latency API ringan + heap browser"
                                 />
                                 <PerformanceGauge
                                     title="Traffic"

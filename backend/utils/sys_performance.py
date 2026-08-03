@@ -48,6 +48,10 @@ _SPEEDTEST_RESULT_PATH = Path("uploads/jobs/_sys_speedtest_last.json")
 _DOWNLOAD_TEST_BYTES = 5 * 1024 * 1024  # 5 MiB
 _UPLOAD_TEST_BYTES = 2 * 1024 * 1024  # 2 MiB
 
+# Cache heavy upload folder sizing between refreshes
+_uploads_cache: Optional[Tuple[float, Dict[str, Any]]] = None
+_UPLOADS_CACHE_TTL_SEC = 60.0
+
 
 
 def _clamp(value: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -84,13 +88,16 @@ def _tcp_rtt_ms(host: str, port: int, timeout: float = 2.0) -> Optional[float]:
         return None
 
 
-def _network_latency_jitter(samples: int = 5) -> Dict[str, Any]:
+def _network_latency_jitter(samples: int = 3) -> Dict[str, Any]:
+    """Lightweight RTT probe — keep sample count low for dashboard refresh path."""
     rtts: List[float] = []
-    for _ in range(max(3, samples)):
-        ms = _tcp_rtt_ms(_NET_PROBE_HOST, _NET_PROBE_PORT)
+    n = max(2, min(int(samples), 6))
+    for i in range(n):
+        ms = _tcp_rtt_ms(_NET_PROBE_HOST, _NET_PROBE_PORT, timeout=1.2)
         if ms is not None:
             rtts.append(ms)
-        time.sleep(0.05)
+        if i + 1 < n:
+            time.sleep(0.02)
     if not rtts:
         return {
             "status": "error",
@@ -119,7 +126,9 @@ def _network_latency_jitter(samples: int = 5) -> Dict[str, Any]:
     }
 
 
-def _network_iface_throughput(sample_seconds: float = 0.45) -> Dict[str, Any]:
+def _network_iface_throughput(sample_seconds: float = 0.0) -> Dict[str, Any]:
+    """Throughput from delta vs previous sample (no sleep on refresh path)."""
+    global _last_net_sample
     try:
         import psutil
     except ImportError:
@@ -132,19 +141,37 @@ def _network_iface_throughput(sample_seconds: float = 0.45) -> Dict[str, Any]:
         }
 
     try:
-        c0 = psutil.net_io_counters()
-        t0 = time.perf_counter()
-        time.sleep(max(0.2, sample_seconds))
         c1 = psutil.net_io_counters()
-        dt = max(0.001, time.perf_counter() - t0)
-        sent_delta = max(0, int(c1.bytes_sent) - int(c0.bytes_sent))
-        recv_delta = max(0, int(c1.bytes_recv) - int(c0.bytes_recv))
+        now = time.perf_counter()
+        tx_mbps: Optional[float] = None
+        rx_mbps: Optional[float] = None
+        sample_dt: Optional[float] = None
+
+        if sample_seconds and sample_seconds > 0:
+            c0 = c1
+            t0 = now
+            time.sleep(max(0.15, sample_seconds))
+            c1 = psutil.net_io_counters()
+            now = time.perf_counter()
+            dt = max(0.001, now - t0)
+            sample_dt = round(dt, 3)
+            tx_mbps = round((max(0, int(c1.bytes_sent) - int(c0.bytes_sent)) * 8) / dt / 1_000_000, 3)
+            rx_mbps = round((max(0, int(c1.bytes_recv) - int(c0.bytes_recv)) * 8) / dt / 1_000_000, 3)
+        elif _last_net_sample is not None:
+            t0, s0, r0 = _last_net_sample
+            dt = now - t0
+            if dt >= 0.4:
+                sample_dt = round(dt, 3)
+                tx_mbps = round((max(0, int(c1.bytes_sent) - s0) * 8) / dt / 1_000_000, 3)
+                rx_mbps = round((max(0, int(c1.bytes_recv) - r0) * 8) / dt / 1_000_000, 3)
+
+        _last_net_sample = (now, int(c1.bytes_sent), int(c1.bytes_recv))
         return {
             "bytes_sent": int(c1.bytes_sent),
             "bytes_recv": int(c1.bytes_recv),
-            "tx_mbps": round((sent_delta * 8) / dt / 1_000_000, 3),
-            "rx_mbps": round((recv_delta * 8) / dt / 1_000_000, 3),
-            "sample_seconds": round(dt, 3),
+            "tx_mbps": tx_mbps,
+            "rx_mbps": rx_mbps,
+            "sample_seconds": sample_dt,
         }
     except Exception as e:
         return {
@@ -182,8 +209,8 @@ def _write_last_speedtest(payload: Dict[str, Any]) -> None:
 
 
 def _network_snapshot() -> Dict[str, Any]:
-    latency = _network_latency_jitter()
-    iface = _network_iface_throughput()
+    latency = _network_latency_jitter(samples=2)
+    iface = _network_iface_throughput(sample_seconds=0.0)
     last = _read_last_speedtest()
     return {
         "latency": latency,
@@ -456,15 +483,13 @@ def _celery_status() -> Dict[str, Any]:
     try:
         from celery_app import celery as celery_app
 
-        insp = celery_app.control.inspect(timeout=1.0)
+        insp = celery_app.control.inspect(timeout=0.25)
         ping = insp.ping() or {}
         active = insp.active() or {}
-        reserved = insp.reserved() or {}
-        scheduled = insp.scheduled() or {}
+        reserved_tasks = 0
+        scheduled_tasks = 0
         workers = len(ping)
         active_tasks = sum(len(v or []) for v in active.values())
-        reserved_tasks = sum(len(v or []) for v in reserved.values())
-        scheduled_tasks = sum(len(v or []) for v in scheduled.values())
         if workers == 0:
             return {
                 "status": "degraded",
@@ -584,23 +609,22 @@ def _app_processes() -> List[Dict[str, Any]]:
     except ImportError:
         return []
 
-    # Prime cpu_percent
-    procs = []
-    try:
-        for p in psutil.process_iter(["pid", "name", "cmdline", "memory_info"]):
-            procs.append(p)
-    except Exception:
-        return []
-
-    for p in procs:
-        try:
-            p.cpu_percent(interval=None)
-        except (psutil.Error, Exception):
-            pass
-    time.sleep(0.15)
+    name_allow = {
+        "python",
+        "python.exe",
+        "python3",
+        "python3.exe",
+        "celery",
+        "celery.exe",
+        "node",
+        "node.exe",
+        "next-server",
+        "npm",
+        "npm.cmd",
+    }
 
     grouped: Dict[str, Dict[str, Any]] = {}
-    for role, hints in _APP_PROCESS_HINTS:
+    for role, _hints in _APP_PROCESS_HINTS:
         grouped[role] = {
             "role": role,
             "pid": None,
@@ -608,76 +632,74 @@ def _app_processes() -> List[Dict[str, Any]]:
             "cpu_percent": 0.0,
             "rss_bytes": 0,
             "count": 0,
+            "_top_rss": 0,
         }
 
-    for p in procs:
-        try:
-            info = p.info
-            name = str(info.get("name") or "").lower()
-            cmdline_list = info.get("cmdline") or []
-            cmd = " ".join(str(x) for x in cmdline_list).lower()
-            blob = f"{name} {cmd}"
-        except (psutil.Error, Exception):
-            continue
-
-        matched_role: Optional[str] = None
-        for role, hints in _APP_PROCESS_HINTS:
-            if any(h in blob for h in hints):
-                # Prefer celery over generic node when both might match
-                if role == "web" and ("celery" in blob or "uvicorn" in blob):
+    try:
+        for p in psutil.process_iter(["pid", "name", "memory_info"]):
+            try:
+                info = p.info
+                pname = str(info.get("name") or "")
+                name_l = pname.lower()
+                if name_l not in name_allow and not name_l.startswith("python"):
                     continue
-                if role == "api" and "celery" in blob:
-                    continue
-                matched_role = role
-                break
-        if not matched_role:
-            continue
+                try:
+                    cmdline_list = p.cmdline() or []
+                except (psutil.Error, Exception):
+                    cmdline_list = []
+                cmd = " ".join(str(x) for x in cmdline_list).lower()
+                blob = f"{name_l} {cmd}"
+            except (psutil.Error, Exception):
+                continue
 
-        try:
-            cpu = float(p.cpu_percent(interval=None) or 0.0)
-            mem = p.memory_info()
-            rss = int(getattr(mem, "rss", 0) or 0)
-            pid = int(p.pid)
-            pname = str(info.get("name") or matched_role)
-        except (psutil.Error, Exception):
-            continue
+            matched_role: Optional[str] = None
+            for role, hints in _APP_PROCESS_HINTS:
+                if any(h in blob for h in hints):
+                    if role == "web" and ("celery" in blob or "uvicorn" in blob):
+                        continue
+                    if role == "api" and "celery" in blob:
+                        continue
+                    matched_role = role
+                    break
+            if not matched_role:
+                continue
 
-        g = grouped[matched_role]
-        g["count"] = int(g["count"]) + 1
-        g["cpu_percent"] = round(float(g["cpu_percent"]) + cpu, 1)
-        g["rss_bytes"] = int(g["rss_bytes"]) + rss
-        # Keep highest-RSS pid as representative
-        if g["pid"] is None or rss >= int(g.get("_top_rss") or 0):
-            g["pid"] = pid
-            g["name"] = pname
-            g["_top_rss"] = rss
+            try:
+                cpu = float(p.cpu_percent(interval=None) or 0.0)
+                mem = info.get("memory_info")
+                rss = int(getattr(mem, "rss", 0) or 0) if mem is not None else 0
+                if rss <= 0:
+                    mem2 = p.memory_info()
+                    rss = int(getattr(mem2, "rss", 0) or 0)
+                pid = int(p.pid)
+            except (psutil.Error, Exception):
+                continue
+
+            g = grouped[matched_role]
+            g["count"] = int(g["count"]) + 1
+            g["cpu_percent"] = round(float(g["cpu_percent"]) + cpu, 1)
+            g["rss_bytes"] = int(g["rss_bytes"]) + rss
+            if g["pid"] is None or rss >= int(g.get("_top_rss") or 0):
+                g["pid"] = pid
+                g["name"] = pname or matched_role
+                g["_top_rss"] = rss
+    except Exception:
+        pass
 
     out: List[Dict[str, Any]] = []
     for role, _hints in _APP_PROCESS_HINTS:
         g = grouped[role]
         g.pop("_top_rss", None)
-        if int(g["count"]) == 0:
-            out.append(
-                {
-                    "role": role,
-                    "pid": None,
-                    "name": None,
-                    "cpu_percent": 0.0,
-                    "rss_bytes": 0,
-                    "count": 0,
-                }
-            )
-        else:
-            out.append(
-                {
-                    "role": role,
-                    "pid": g["pid"],
-                    "name": g["name"],
-                    "cpu_percent": round(float(g["cpu_percent"]), 1),
-                    "rss_bytes": int(g["rss_bytes"]),
-                    "count": int(g["count"]),
-                }
-            )
+        out.append(
+            {
+                "role": role,
+                "pid": g["pid"],
+                "name": g["name"],
+                "cpu_percent": round(float(g["cpu_percent"]), 1) if int(g["count"]) else 0.0,
+                "rss_bytes": int(g["rss_bytes"]) if int(g["count"]) else 0,
+                "count": int(g["count"]),
+            }
+        )
     return out
 
 
@@ -698,7 +720,7 @@ def _host_metrics() -> Dict[str, Any]:
 
     boot = getattr(psutil, "boot_time", lambda: time.time())()
     uptime = int(time.time() - boot)
-    cpu_percent = float(psutil.cpu_percent(interval=0.2))
+    cpu_percent = float(psutil.cpu_percent(interval=0.05))
     mem = psutil.virtual_memory()
     try:
         swap = psutil.swap_memory()
@@ -838,7 +860,9 @@ def _job_duration_seconds(job: Dict[str, Any]) -> Optional[float]:
 def _jobs_summary(jobs: List[Dict[str, Any]], all_jobs: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     now = datetime.utcnow()
     day_ago = now - timedelta(hours=24)
+    recent_ago = now - timedelta(hours=6)
     queued = running = failed_24h = completed_24h = 0
+    failed_6h = completed_6h = 0
     recent: List[Dict[str, Any]] = []
     pool = all_jobs if all_jobs is not None else jobs
 
@@ -873,6 +897,11 @@ def _jobs_summary(jobs: List[Dict[str, Any]], all_jobs: Optional[List[Dict[str, 
                 dur = _job_duration_seconds(job)
                 if dur is not None:
                     bucket["durations_sec"].append(dur)
+            if ts >= recent_ago:
+                if status == "failed":
+                    failed_6h += 1
+                elif status in {"completed", "done", "success"}:
+                    completed_6h += 1
 
     for job in jobs:
         if len(recent) >= 8:
@@ -888,12 +917,17 @@ def _jobs_summary(jobs: List[Dict[str, Any]], all_jobs: Optional[List[Dict[str, 
             }
         )
 
-    # Also count queued/running only from recent list scan of pool already done
+    total_done_24h = failed_24h + completed_24h
+    success_rate = 100.0 if total_done_24h == 0 else round(100.0 * completed_24h / total_done_24h, 1)
 
-    total_done = failed_24h + completed_24h
-    success_rate = 100.0 if total_done == 0 else round(100.0 * completed_24h / total_done, 1)
+    # Gauge: prefer last 6 hours so recovered systems go green without waiting 24h
+    total_done_6h = failed_6h + completed_6h
+    if total_done_6h > 0:
+        success_for_score = 100.0 * completed_6h / total_done_6h
+    else:
+        success_for_score = success_rate
     queue_pressure = queued + running
-    processing_score = _clamp(success_rate - min(40.0, queue_pressure * 8.0))
+    processing_score = _clamp(success_for_score - min(40.0, queue_pressure * 8.0))
 
     all_durs: List[float] = []
     per_kind: List[Dict[str, Any]] = []
@@ -957,28 +991,40 @@ def _errors_summary() -> Dict[str, Any]:
 
 def _uploads_freshness() -> Dict[str, Any]:
     """Rough traffic/data freshness + folder sizes under uploads/."""
-    roots = [
-        Path("uploads"),
-        Path("uploads/all_shipment"),
-        Path("uploads/jobs"),
-    ]
+    global _uploads_cache
+    now = time.time()
+    if _uploads_cache and (now - _uploads_cache[0]) < _UPLOADS_CACHE_TTL_SEC:
+        return dict(_uploads_cache[1])
+
+    uploads_root = Path("uploads")
     newest: Optional[float] = None
     file_count = 0
-    for root in roots:
+
+    probe_roots = [
+        Path("uploads/jobs"),
+        Path("uploads/kiriman_yes"),
+        Path("uploads/all_shipment"),
+    ]
+    for root in probe_roots:
         if not root.is_dir():
             continue
-        for p in root.rglob("*"):
-            if not p.is_file():
-                continue
-            if p.suffix.lower() in {".tmp", ".meta"}:
-                continue
-            try:
-                mtime = p.stat().st_mtime
-            except OSError:
-                continue
-            file_count += 1
-            if newest is None or mtime > newest:
-                newest = mtime
+        try:
+            for p in root.rglob("*"):
+                if file_count >= 2500:
+                    break
+                if not p.is_file():
+                    continue
+                if p.suffix.lower() in {".tmp"}:
+                    continue
+                try:
+                    mtime = p.stat().st_mtime
+                except OSError:
+                    continue
+                file_count += 1
+                if newest is None or mtime > newest:
+                    newest = mtime
+        except OSError:
+            pass
 
     age_hours = None
     if newest is not None:
@@ -995,31 +1041,29 @@ def _uploads_freshness() -> Dict[str, Any]:
     else:
         activity = 30.0
 
-    uploads_root = Path("uploads")
-    total_bytes, sized_files = _dir_size_bytes(uploads_root)
+    total_bytes, sized_files = _dir_size_bytes(uploads_root, max_files=20_000)
     folders: List[Dict[str, Any]] = []
     if uploads_root.is_dir():
         for name in _UPLOAD_TOP_DIRS:
             sub = uploads_root / name
             if not sub.is_dir():
                 continue
-            b, c = _dir_size_bytes(sub, max_files=40_000)
+            b, c = _dir_size_bytes(sub, max_files=10_000)
             folders.append({"name": name, "bytes": b, "files": c})
-        # Any other top-level dirs
         try:
             for child in sorted(uploads_root.iterdir()):
                 if not child.is_dir():
                     continue
                 if child.name in _UPLOAD_TOP_DIRS or child.name.startswith("."):
                     continue
-                b, c = _dir_size_bytes(child, max_files=20_000)
+                b, c = _dir_size_bytes(child, max_files=6_000)
                 if b > 0:
                     folders.append({"name": child.name, "bytes": b, "files": c})
         except OSError:
             pass
     folders.sort(key=lambda x: int(x.get("bytes") or 0), reverse=True)
 
-    return {
+    payload = {
         "tracked_files": file_count,
         "newest_age_hours": age_hours,
         "activity_score": activity,
@@ -1027,6 +1071,8 @@ def _uploads_freshness() -> Dict[str, Any]:
         "sized_files": sized_files,
         "folders": folders[:12],
     }
+    _uploads_cache = (now, payload)
+    return dict(payload)
 
 
 def collect_sys_performance() -> Dict[str, Any]:
