@@ -1,203 +1,206 @@
 "use client";
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, LogIn, User, Lock, Server, AlertCircle } from 'lucide-react';
-import { API_URL } from '../../config';
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, LogIn, User, Lock, AlertCircle } from "lucide-react";
+import { API_URL } from "../../config";
 
 export default function LoginPage() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
-    const [serverStatus, setServerStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+    const [serverStatus, setServerStatus] = useState<"checking" | "online" | "offline">("checking");
+    const [gifFailed, setGifFailed] = useState(false);
     const router = useRouter();
+    const JNE_RED = "#E30613";
 
     useEffect(() => {
-        // Health Check
         const checkServer = async () => {
             try {
                 const res = await fetch(`${API_URL}/`);
                 if (res.ok) {
-                    setServerStatus('online');
+                    setServerStatus("online");
                 } else {
-                    setServerStatus('offline');
+                    setServerStatus("offline");
                 }
             } catch (e) {
                 console.error("Health check failed:", e);
-                setServerStatus('offline');
+                setServerStatus("offline");
             }
         };
-        checkServer();
+        void checkServer();
     }, []);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setError('');
+        setError("");
 
         try {
             const formData = new URLSearchParams();
-            formData.append('username', email);
-            formData.append('password', password);
+            formData.append("username", email);
+            formData.append("password", password);
 
             const res = await fetch(`${API_URL}/token`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
                 body: formData,
             });
 
             if (!res.ok) {
                 const errData = await res.json().catch(() => null);
-                throw new Error(errData?.detail || 'Invalid credentials');
+                throw new Error(errData?.detail || "Email atau password tidak valid");
             }
 
             const data = await res.json();
-            localStorage.setItem('token', data.access_token);
-            router.push('/dashboard/v2');
+            localStorage.setItem("token", data.access_token);
+            router.push("/dashboard/v2");
         } catch (err: any) {
-            setError(err.message || 'Login failed');
+            setError(err.message || "Login gagal");
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px]" />
-                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-600/20 rounded-full blur-[120px]" />
+        <div
+            className="relative min-h-screen overflow-hidden bg-[#070b14] text-white antialiased"
+            style={{ fontFamily: "var(--font-lexend-deca), sans-serif" }}
+        >
+            <div className="pointer-events-none absolute inset-0">
+                <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-red-600/20 blur-[120px]" />
+                <div className="absolute -right-24 bottom-0 h-80 w-80 rounded-full bg-sky-500/20 blur-[140px]" />
             </div>
 
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-2xl w-full max-w-md shadow-2xl relative z-10"
-            >
-                {/* Back Button */}
-                <Link
-                    href="/"
-                    className="absolute top-4 left-4 p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/5 flex items-center gap-2"
-                    title="Back to Landing Page"
-                >
-                    <ArrowLeft className="w-5 h-5" />
-                </Link>
-
-
-
-                <div className="text-center mb-8">
-                    <h1 className="text-3xl font-bold text-white mb-2">Welcome Back</h1>
-                    <p className="text-slate-400">Sign in to BPS JNE Dashboard</p>
-                </div>
-
-                {error && (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg mb-6 text-sm text-center flex items-center justify-center gap-2">
-                        <AlertCircle className="w-4 h-4" /> {error}
-                    </div>
-                )}
-
-                {serverStatus === 'offline' && !error && (
-                    <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 p-3 rounded-lg mb-6 text-sm text-center">
-                        Cannot connect to server. Please ensure backend is running at {API_URL}
-                    </div>
-                )}
-
-                <form onSubmit={handleLogin} className="space-y-6">
-                    <div>
-                        <label className="block text-slate-400 text-sm mb-2">Email Address</label>
-                        <div className="relative">
-                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors"
-                                placeholder="admin@bps.go.id"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-slate-400 text-sm mb-2">Password</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                                className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors"
-                                placeholder="••••••••"
-                                required
-                            />
-                        </div>
-                    </div>
-
-                    <button
-                        type="submit"
-                        disabled={loading || serverStatus === 'offline'}
-                        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            <main className="relative z-10 mx-auto flex min-h-screen w-full max-w-[90rem] items-center px-6 py-8 sm:px-10 lg:px-14">
+                <div className="grid w-full items-stretch gap-6 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)]">
+                    <motion.section
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.35 }}
+                        className="relative rounded-3xl border border-white/10 bg-white/[0.04] p-7 shadow-2xl backdrop-blur-xl sm:p-10"
                     >
-                        {loading ? 'Signing in...' : (
-                            <>
-                                <LogIn className="w-5 h-5" />
-                                Sign In
-                            </>
-                        )}
-                    </button>
-                </form>
-
-                <p className="text-center mt-6 text-slate-500 text-sm">
-                    Butuh akun baru? Hubungi Admin IT (menu Kelola User).
-                </p>
-            </motion.div>
-
-
-            {/* Demo Accounts Panel */}
-            <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2 }}
-                className="hidden lg:block ml-8 bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-2xl w-80 shadow-2xl h-[600px] overflow-y-auto custom-scrollbar"
-            >
-                <div className="sticky top-0 bg-transparent backdrop-blur-md pb-4 pt-2 mb-2 border-b border-white/10 z-10">
-                    <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                        <Server className="w-5 h-5 text-blue-400" />
-                        Demo Accounts
-                    </h2>
-                    <p className="text-xs text-slate-400 mt-1">Click to copy/fill credentials</p>
-                </div>
-
-                <div className="space-y-3">
-                    {[
-                        { role: 'Super Admin', email: 'admin@bps.go.id' },
-                        { role: 'Admin Cabang', email: 'admincabang@bps.go.id' },
-                        { role: 'Admin BPS', email: 'adminbps@bps.go.id' },
-                        { role: 'Admin Inbound', email: 'admininbound@bps.go.id' },
-                        { role: 'Admin Outbound', email: 'adminoutbound@bps.go.id' },
-                        { role: 'Admin Pickup', email: 'adminpickup@bps.go.id' },
-                        { role: 'Admin SCO', email: 'adminsco@bps.go.id' },
-                        { role: 'Admin Salles', email: 'adminsalles@bps.go.id' },
-                        { role: 'Admin Finance', email: 'adminfinance@bps.go.id' },
-                        { role: 'Admin CCC', email: 'adminccc@bps.go.id' },
-                        { role: 'Admin COD', email: 'admincod@bps.go.id' },
-                        { role: 'Admin Compliance', email: 'admincomplience@bps.go.id' },
-                        { role: 'PIC Cabang', email: 'piccabang@bps.go.id' },
-                    ].map((acc) => (
-                        <div
-                            key={acc.email}
-                            onClick={() => { setEmail(acc.email); setPassword('admin123'); }}
-                            className="bg-black/20 hover:bg-white/10 p-3 rounded-lg border border-white/5 cursor-pointer transition-colors group"
-                        >
-                            <div className="text-xs font-bold text-blue-300 mb-0.5">{acc.role}</div>
-                            <div className="text-xs text-slate-300 font-mono break-all group-hover:text-white">{acc.email}</div>
-                            <div className="text-[10px] text-slate-500 mt-1">Pass: admin123</div>
+                        <div className="flex items-center justify-between gap-4">
+                            <Link
+                                href="/"
+                                className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/75 transition hover:border-white/30 hover:text-white"
+                            >
+                                <ArrowLeft className="size-4" />
+                                Kembali ke Landing
+                            </Link>
+                            <Image
+                                src="/jne_logo.png"
+                                alt="JNE"
+                                width={112}
+                                height={48}
+                                className="h-9 w-auto"
+                                priority
+                            />
                         </div>
-                    ))}
+
+                        <div className="mt-6">
+                            <h1 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
+                                Masuk ke Dashboard
+                            </h1>
+                            <p className="mt-3 text-sm leading-relaxed text-white/70 sm:text-base">
+                                Gunakan akun internal JNE KOE untuk mengakses modul OPERASIONAL,
+                                FINANCE &amp; ACCOUNTING, GA, ALC, SALES &amp; MARKETING, HC,
+                                dan IT.
+                            </p>
+                        </div>
+
+                        {error && (
+                            <div className="mt-6 flex items-center justify-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                                <AlertCircle className="size-4" />
+                                {error}
+                            </div>
+                        )}
+
+                        {serverStatus === "offline" && !error && (
+                            <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-300">
+                                Server belum terhubung. Pastikan backend aktif di `{API_URL}`.
+                            </div>
+                        )}
+
+                        <form onSubmit={handleLogin} className="mt-7 space-y-5">
+                            <div>
+                                <label className="mb-2 block text-sm text-white/75">Email Address</label>
+                                <div className="relative">
+                                    <User className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-white/35" />
+                                    <input
+                                        type="email"
+                                        value={email}
+                                        onChange={(e) => setEmail(e.target.value)}
+                                        className="w-full rounded-xl border border-white/15 bg-[#0b1220]/70 py-3 pl-11 pr-4 text-white outline-none transition focus:border-white/30 focus:ring-2 focus:ring-red-600/25"
+                                        placeholder="admin@jne.co.id"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="mb-2 block text-sm text-white/75">Password</label>
+                                <div className="relative">
+                                    <Lock className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-white/35" />
+                                    <input
+                                        type="password"
+                                        value={password}
+                                        onChange={(e) => setPassword(e.target.value)}
+                                        className="w-full rounded-xl border border-white/15 bg-[#0b1220]/70 py-3 pl-11 pr-4 text-white outline-none transition focus:border-white/30 focus:ring-2 focus:ring-red-600/25"
+                                        placeholder="••••••••"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <button
+                                type="submit"
+                                disabled={loading || serverStatus === "offline"}
+                                className="inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3.5 text-sm font-bold text-white shadow-xl transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50 sm:text-base"
+                                style={{ backgroundColor: JNE_RED }}
+                            >
+                                {loading ? (
+                                    "Memproses..."
+                                ) : (
+                                    <>
+                                        <LogIn className="size-5" />
+                                        Masuk
+                                    </>
+                                )}
+                            </button>
+                        </form>
+
+                        <p className="mt-6 text-center text-sm text-white/50">
+                            Butuh akun baru? Hubungi Admin IT melalui menu Kelola User.
+                        </p>
+                    </motion.section>
+
+                    <motion.section
+                        initial={{ opacity: 0, x: 16 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.1, duration: 0.35 }}
+                        className="relative hidden min-h-[620px] items-center justify-center lg:flex"
+                    >
+                        {!gifFailed ? (
+                            <img
+                                src="/landing/mascot-login.gif.gif"
+                                alt="Maskot JNE"
+                                className="h-[64%] max-h-[540px] w-auto max-w-full object-contain drop-shadow-[0_14px_40px_rgba(227,6,19,0.25)]"
+                                onError={() => setGifFailed(true)}
+                            />
+                        ) : (
+                            <div className="max-w-sm rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-6 text-center text-sm text-white/60">
+                                File animasi belum ditemukan di
+                                `frontend/public/landing/mascot-login.gif.gif`.
+                            </div>
+                        )}
+                    </motion.section>
                 </div>
-            </motion.div>
-        </div >
+            </main>
+        </div>
     );
 }
