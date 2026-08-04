@@ -244,38 +244,39 @@ export default function LandingPage() {
                 </div>
 
                 {/* Logo putih — tengah atas */}
-                <div className="relative z-10 flex justify-center pt-12 sm:pt-16">
+                <div className="relative z-10 flex justify-center pt-10">
                     <Image
                         src="/landing/logo-white.svg"
                         alt="JNE Express"
-                        width={240}
-                        height={72}
-                        className="h-14 w-auto drop-shadow-lg sm:h-16 md:h-20"
+                        width={160}
+                        height={48}
+                        className="h-10 w-auto drop-shadow-lg sm:h-10 md:h-10"
                         priority
                     />
                 </div>
 
                 <div
-                    className={`relative z-10 flex w-full flex-1 flex-col justify-end pb-20 sm:justify-center sm:pb-28 sm:pt-10 ${SHELL}`}
+                    className={`relative z-10 flex w-full flex-1 flex-col justify-end pb-16 sm:justify-center sm:pb-24 sm:pt-8 ${SHELL}`}
                 >
                     <motion.div
                         initial={{ opacity: 0, y: 28 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.65, ease: "easeOut" }}
-                        className="mx-auto max-w-5xl text-center sm:mx-0 sm:text-left"
+                        className="mx-auto max-w-4xl text-center sm:mx-0 sm:text-left"
                     >
-                        <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-white sm:text-7xl lg:text-8xl">
+                        <h1 className="text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-7xl">
                             Satu Dashboard.
                             <br />
                             <span style={{ color: JNE_RED }}>Semua Divisi.</span>
                         </h1>
-                        <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/85 sm:mx-0 sm:text-xl lg:text-2xl">
-                            Platform internal JNE KOE untuk mengelola operasional, keuangan,
-                            ALC, sales, HC, dan IT — rapi, cepat, dan terhubung.
+                        <p className="mt-5 max-w-3xl text-base leading-relaxed text-white/85 sm:mx-0 sm:text-lg lg:text-xl">
+                            Platform internal JNE KOE untuk mengelola OPERASIONAL, FINANCE &
+                            ACCOUNTING, GA, ALC, SALES & MARKETING, HC, dan IT — Rapih, Cepat,
+                            dan Terhubung.
                         </p>
 
                         {/* Quotes di atas tombol Masuk */}
-                        <div className="mx-auto mt-10 min-h-[5.5rem] max-w-3xl sm:mx-0">
+                        <div className="mx-auto mt-8 min-h-[4.5rem] max-w-2xl sm:mx-0">
                             <AnimatePresence mode="wait">
                                 <motion.p
                                     key={quoteIdx}
@@ -283,21 +284,21 @@ export default function LandingPage() {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -8 }}
                                     transition={{ duration: 0.35 }}
-                                    className="text-base font-medium italic leading-relaxed text-white/90 sm:text-lg lg:text-xl"
+                                    className="text-sm font-medium italic leading-relaxed text-white/90 sm:text-base lg:text-lg"
                                 >
                                     “{MOTIVASI[quoteIdx]}”
                                 </motion.p>
                             </AnimatePresence>
                         </div>
 
-                        <div className="mt-8 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
+                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
                             <Link
                                 href={primaryHref}
-                                className="inline-flex items-center gap-2.5 rounded-full px-9 py-4 text-base font-bold text-white shadow-xl transition hover:brightness-110 sm:text-lg"
+                                className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-sm font-bold text-white shadow-xl transition hover:brightness-110 sm:text-base"
                                 style={{ backgroundColor: JNE_RED }}
                             >
                                 {primaryLabel}
-                                <ArrowRight className="size-5" />
+                                <ArrowRight className="size-4" />
                             </Link>
                         </div>
                     </motion.div>
