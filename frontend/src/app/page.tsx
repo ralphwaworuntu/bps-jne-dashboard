@@ -235,14 +235,7 @@ export default function LandingPage() {
                         preload="auto"
                         poster="/landing/hero-poster.jpg"
                     >
-                        <source
-                            src="https://jne.co.id/cfind/source/files/hugo-papua-15-website.mp4"
-                            type="video/mp4"
-                        />
-                        <source
-                            src="https://jne.co.id/cfind/source/files/hugo-papua-15-website.webm"
-                            type="video/webm"
-                        />
+                        <source src="/landing/hero.mp4" type="video/mp4" />
                     </video>
                     <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-[#070b14]/70 to-[#070b14]/40" />
                     <div className="absolute inset-0 bg-gradient-to-r from-[#070b14]/55 via-transparent to-[#070b14]/45" />
