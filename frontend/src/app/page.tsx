@@ -19,6 +19,8 @@ import {
 import { API_URL } from "../config";
 
 const JNE_RED = "#E30613";
+/** Lebar konten desktop umum (~1440px) + gutter responsif */
+const SHELL = "mx-auto w-full max-w-[90rem] px-6 sm:px-10 lg:px-14";
 
 const MOTIVASI = [
     "Setiap paket yang tepat waktu dimulai dari data yang akurat — kerja hebat hari ini.",
@@ -176,20 +178,20 @@ export default function LandingPage() {
                         transition={{ duration: 0.25 }}
                         className="fixed inset-x-0 top-0 z-50 border-b border-white/10 bg-[#0b1220]/85 backdrop-blur-md"
                     >
-                        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
+                        <div className={`flex h-20 items-center justify-between ${SHELL}`}>
                             <Link href="/" className="flex items-center">
                                 <Image
                                     src="/jne_logo.png"
                                     alt="JNE"
-                                    width={96}
-                                    height={40}
-                                    className="h-8 w-auto sm:h-9"
+                                    width={120}
+                                    height={48}
+                                    className="h-9 w-auto sm:h-11"
                                     priority
                                 />
                             </Link>
-                            <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="flex items-center gap-3 sm:gap-5">
                                 <span
-                                    className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:text-xs ${
+                                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium sm:text-sm ${
                                         serverStatus === "online"
                                             ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
                                             : serverStatus === "offline"
@@ -198,7 +200,7 @@ export default function LandingPage() {
                                     }`}
                                 >
                                     <span
-                                        className={`size-1.5 rounded-full ${
+                                        className={`size-2 rounded-full ${
                                             serverStatus === "online"
                                                 ? "bg-emerald-400"
                                                 : serverStatus === "offline"
@@ -210,7 +212,7 @@ export default function LandingPage() {
                                 </span>
                                 <Link
                                     href={primaryHref}
-                                    className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white shadow-lg transition hover:brightness-110"
+                                    className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:brightness-110 sm:text-base"
                                     style={{ backgroundColor: JNE_RED }}
                                 >
                                     {primaryLabel}
@@ -242,36 +244,38 @@ export default function LandingPage() {
                 </div>
 
                 {/* Logo putih — tengah atas */}
-                <div className="relative z-10 flex justify-center pt-10 sm:pt-14">
+                <div className="relative z-10 flex justify-center pt-12 sm:pt-16">
                     <Image
                         src="/landing/logo-white.svg"
                         alt="JNE Express"
-                        width={180}
-                        height={54}
-                        className="h-11 w-auto drop-shadow-lg sm:h-14"
+                        width={240}
+                        height={72}
+                        className="h-14 w-auto drop-shadow-lg sm:h-16 md:h-20"
                         priority
                     />
                 </div>
 
-                <div className="relative z-10 mx-auto flex w-full max-w-6xl flex-1 flex-col justify-end px-5 pb-16 sm:justify-center sm:px-8 sm:pb-24 sm:pt-8">
+                <div
+                    className={`relative z-10 flex w-full flex-1 flex-col justify-end pb-20 sm:justify-center sm:pb-28 sm:pt-10 ${SHELL}`}
+                >
                     <motion.div
                         initial={{ opacity: 0, y: 28 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.65, ease: "easeOut" }}
-                        className="mx-auto max-w-3xl text-center sm:mx-0 sm:text-left"
+                        className="mx-auto max-w-5xl text-center sm:mx-0 sm:text-left"
                     >
-                        <h1 className="text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-6xl lg:text-7xl">
+                        <h1 className="text-5xl font-bold leading-[1.05] tracking-tight text-white sm:text-7xl lg:text-8xl">
                             Satu Dashboard.
                             <br />
                             <span style={{ color: JNE_RED }}>Semua Divisi.</span>
                         </h1>
-                        <p className="mt-5 max-w-xl text-base leading-relaxed text-white/80 sm:mx-0 sm:text-lg">
+                        <p className="mt-6 max-w-3xl text-lg leading-relaxed text-white/85 sm:mx-0 sm:text-xl lg:text-2xl">
                             Platform internal JNE KOE untuk mengelola operasional, keuangan,
                             ALC, sales, HC, dan IT — rapi, cepat, dan terhubung.
                         </p>
 
                         {/* Quotes di atas tombol Masuk */}
-                        <div className="mx-auto mt-8 min-h-[4.5rem] max-w-xl sm:mx-0">
+                        <div className="mx-auto mt-10 min-h-[5.5rem] max-w-3xl sm:mx-0">
                             <AnimatePresence mode="wait">
                                 <motion.p
                                     key={quoteIdx}
@@ -279,21 +283,21 @@ export default function LandingPage() {
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -8 }}
                                     transition={{ duration: 0.35 }}
-                                    className="text-sm font-medium italic leading-relaxed text-white/90 sm:text-base"
+                                    className="text-base font-medium italic leading-relaxed text-white/90 sm:text-lg lg:text-xl"
                                 >
                                     “{MOTIVASI[quoteIdx]}”
                                 </motion.p>
                             </AnimatePresence>
                         </div>
 
-                        <div className="mt-6 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+                        <div className="mt-8 flex flex-wrap items-center justify-center gap-4 sm:justify-start">
                             <Link
                                 href={primaryHref}
-                                className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-sm font-bold text-white shadow-xl transition hover:brightness-110 sm:text-base"
+                                className="inline-flex items-center gap-2.5 rounded-full px-9 py-4 text-base font-bold text-white shadow-xl transition hover:brightness-110 sm:text-lg"
                                 style={{ backgroundColor: JNE_RED }}
                             >
                                 {primaryLabel}
-                                <ArrowRight className="size-4" />
+                                <ArrowRight className="size-5" />
                             </Link>
                         </div>
                     </motion.div>
@@ -301,7 +305,7 @@ export default function LandingPage() {
             </section>
 
             {/* Semangat Tim — langsung di bawah hero */}
-            <section className="relative overflow-hidden bg-[#070b14] py-20 sm:py-28">
+            <section className="relative overflow-hidden bg-[#070b14] py-24 sm:py-32">
                 <div className="absolute inset-0 opacity-40">
                     <Image
                         src="/landing/promo-truck.jpg"
@@ -312,48 +316,48 @@ export default function LandingPage() {
                     />
                     <div className="absolute inset-0 bg-gradient-to-r from-[#070b14] via-[#070b14]/85 to-[#070b14]/55" />
                 </div>
-                <div className="relative z-10 mx-auto max-w-6xl px-5 sm:px-8">
+                <div className={`relative z-10 ${SHELL}`}>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ duration: 0.5 }}
-                        className="max-w-2xl"
+                        className="max-w-4xl"
                     >
                         <p
-                            className="text-xs font-semibold uppercase tracking-[0.2em]"
+                            className="text-sm font-semibold uppercase tracking-[0.2em]"
                             style={{ color: JNE_RED }}
                         >
                             Semangat Tim
                         </p>
-                        <h2 className="mt-3 text-3xl font-bold leading-tight text-white sm:text-5xl">
+                        <h2 className="mt-4 text-4xl font-bold leading-tight text-white sm:text-5xl lg:text-6xl">
                             Dari Kupang untuk seluruh pelosok Flobamora
                         </h2>
-                        <p className="mt-4 text-base leading-relaxed text-white/75 sm:text-lg">
+                        <p className="mt-5 max-w-3xl text-lg leading-relaxed text-white/80 sm:text-xl">
                             Setiap roda yang berputar adalah jejak pengabdian terbaik kita.
                             Data yang bersih hari ini menjaga kepercayaan pelanggan esok hari —
                             ayo selesaikan dengan bangga.
                         </p>
-                        <div className="mt-8 flex flex-wrap gap-3">
+                        <div className="mt-10 flex flex-wrap gap-4">
                             <Link
                                 href={primaryHref}
-                                className="inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-sm font-bold text-white transition hover:brightness-110"
+                                className="inline-flex items-center gap-2.5 rounded-full px-9 py-4 text-base font-bold text-white transition hover:brightness-110 sm:text-lg"
                                 style={{ backgroundColor: JNE_RED }}
                             >
                                 {hasToken ? (
                                     <>
-                                        <LayoutDashboard className="size-4" />
+                                        <LayoutDashboard className="size-5" />
                                         Lanjut bekerja
                                     </>
                                 ) : (
                                     <>
-                                        <Truck className="size-4" />
+                                        <Truck className="size-5" />
                                         Mulai shift hari ini
                                     </>
                                 )}
                             </Link>
-                            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-4 py-3 text-xs text-white/70">
-                                <Activity className="size-3.5" />
+                            <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-5 py-3.5 text-sm text-white/75 sm:text-base">
+                                <Activity className="size-4" />
                                 Lastmile · Firstmile · ALC · Finance · HC · IT
                             </span>
                         </div>
@@ -362,31 +366,31 @@ export default function LandingPage() {
             </section>
 
             {/* Divisi */}
-            <section className="bg-[#0a101c] py-16 sm:py-24">
-                <div className="mx-auto max-w-6xl px-5 sm:px-8">
+            <section className="bg-[#0a101c] py-20 sm:py-28">
+                <div className={SHELL}>
                     <motion.div
                         initial={{ opacity: 0, y: 16 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true, margin: "-80px" }}
                         transition={{ duration: 0.45 }}
-                        className="mb-10 max-w-2xl"
+                        className="mb-12 max-w-3xl"
                     >
                         <p
-                            className="text-xs font-semibold uppercase tracking-[0.2em]"
+                            className="text-sm font-semibold uppercase tracking-[0.2em]"
                             style={{ color: JNE_RED }}
                         >
                             Divisi JNE KOE
                         </p>
-                        <h2 className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+                        <h2 className="mt-4 text-4xl font-bold tracking-tight text-white sm:text-5xl">
                             Semua fungsi dalam satu sistem
                         </h2>
-                        <p className="mt-3 text-sm leading-relaxed text-white/65 sm:text-base">
+                        <p className="mt-4 text-base leading-relaxed text-white/70 sm:text-lg">
                             Kartu di bawah mengikuti section dashboard. Masuk untuk membuka
                             modul divisi Anda dan kolaborasi lintas tim.
                         </p>
                     </motion.div>
 
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 lg:gap-6">
                         {DIVISIONS.map((d, i) => {
                             const Icon = d.icon;
                             const target = hasToken ? d.href : "/login";
@@ -403,22 +407,22 @@ export default function LandingPage() {
                                         className="group flex h-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] transition hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.06]"
                                     >
                                         <div
-                                            className={`flex items-center gap-3 bg-gradient-to-br ${d.accent} px-5 py-4`}
+                                            className={`flex items-center gap-4 bg-gradient-to-br ${d.accent} px-6 py-5`}
                                         >
-                                            <span className="inline-flex size-10 items-center justify-center rounded-xl bg-white/15 text-white">
-                                                <Icon className="size-5" />
+                                            <span className="inline-flex size-12 items-center justify-center rounded-xl bg-white/15 text-white">
+                                                <Icon className="size-6" />
                                             </span>
-                                            <h3 className="text-lg font-bold text-white">
+                                            <h3 className="text-xl font-bold text-white sm:text-2xl">
                                                 {d.title}
                                             </h3>
                                         </div>
-                                        <div className="flex flex-1 flex-col gap-4 px-5 py-5">
-                                            <p className="text-sm leading-relaxed text-white/65">
+                                        <div className="flex flex-1 flex-col gap-5 px-6 py-6">
+                                            <p className="text-base leading-relaxed text-white/70 sm:text-lg">
                                                 {d.blurb}
                                             </p>
-                                            <span className="mt-auto inline-flex items-center gap-1.5 text-sm font-semibold text-white/90 transition group-hover:gap-2.5">
+                                            <span className="mt-auto inline-flex items-center gap-2 text-base font-semibold text-white/90 transition group-hover:gap-3">
                                                 {hasToken ? "Buka modul" : "Masuk untuk akses"}
-                                                <ArrowRight className="size-4" />
+                                                <ArrowRight className="size-5" />
                                             </span>
                                         </div>
                                     </Link>
@@ -429,19 +433,21 @@ export default function LandingPage() {
                 </div>
             </section>
 
-            <footer className="border-t border-white/10 bg-[#05080f] py-10">
-                <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-5 sm:flex-row sm:items-center sm:px-8">
-                    <div className="flex items-center gap-3">
+            <footer className="border-t border-white/10 bg-[#05080f] py-12">
+                <div
+                    className={`flex flex-col items-start justify-between gap-5 sm:flex-row sm:items-center ${SHELL}`}
+                >
+                    <div className="flex items-center gap-4">
                         <Image
                             src="/jne_logo.png"
                             alt="JNE"
-                            width={72}
-                            height={32}
-                            className="h-7 w-auto"
+                            width={96}
+                            height={40}
+                            className="h-9 w-auto"
                         />
-                        <span className="text-sm text-white/55">JNE Dashboard · Cabang KOE</span>
+                        <span className="text-base text-white/60">JNE Dashboard · Cabang KOE</span>
                     </div>
-                    <p className="text-xs text-white/40">
+                    <p className="text-sm text-white/45">
                         © {new Date().getFullYear()} Internal use only. Bukan situs pelanggan.
                     </p>
                 </div>
