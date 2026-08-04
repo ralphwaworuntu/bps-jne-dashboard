@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
@@ -94,6 +94,7 @@ export default function LandingPage() {
     const [hasToken, setHasToken] = useState(false);
     const [quoteIdx, setQuoteIdx] = useState(0);
     const [showHeader, setShowHeader] = useState(false);
+    const heroVideoRef = useRef<HTMLVideoElement | null>(null);
 
     useEffect(() => {
         setHasToken(Boolean(localStorage.getItem("token")));
@@ -106,6 +107,32 @@ export default function LandingPage() {
             }
         };
         void checkServer();
+    }, []);
+
+    useEffect(() => {
+        const video = heroVideoRef.current;
+        if (!video) return;
+
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+
+        const tryPlay = () => {
+            const playPromise = video.play();
+            if (playPromise && typeof playPromise.catch === "function") {
+                playPromise.catch(() => {
+                    // Autoplay bisa diblok browser; poster tetap tampil.
+                });
+            }
+        };
+
+        tryPlay();
+        video.addEventListener("loadeddata", tryPlay);
+        video.addEventListener("canplay", tryPlay);
+        return () => {
+            video.removeEventListener("loadeddata", tryPlay);
+            video.removeEventListener("canplay", tryPlay);
+        };
     }, []);
 
     useEffect(() => {
@@ -199,21 +226,16 @@ export default function LandingPage() {
             <section className="relative flex min-h-[100svh] flex-col overflow-hidden">
                 <div className="absolute inset-0">
                     <video
+                        ref={heroVideoRef}
                         className="h-full w-full object-cover"
                         autoPlay
                         muted
                         loop
                         playsInline
+                        preload="auto"
                         poster="/landing/hero-poster.jpg"
                     >
-                        <source
-                            src="https://jne.co.id/cfind/source/files/hugo-papua-15-website.mp4"
-                            type="video/mp4"
-                        />
-                        <source
-                            src="https://jne.co.id/cfind/source/files/hugo-papua-15-website.webm"
-                            type="video/webm"
-                        />
+                        <source src="/landing/hero.mp4" type="video/mp4" />
                     </video>
                     <div className="absolute inset-0 bg-gradient-to-t from-[#070b14] via-[#070b14]/70 to-[#070b14]/40" />
                     <div className="absolute inset-0 bg-gradient-to-r from-[#070b14]/55 via-transparent to-[#070b14]/45" />
