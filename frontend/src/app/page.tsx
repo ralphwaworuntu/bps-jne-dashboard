@@ -224,10 +224,10 @@ export default function LandingPage() {
 
             {/* Hero — full bleed */}
             <section className="relative flex min-h-[100svh] flex-col overflow-hidden">
-                <div className="absolute inset-0">
+                <div className="absolute inset-0 overflow-hidden">
                     <video
                         ref={heroVideoRef}
-                        className="h-full w-full object-cover"
+                        className="pointer-events-none absolute left-1/2 top-1/2 h-auto w-auto min-h-full min-w-full max-w-none -translate-x-1/2 -translate-y-1/2 scale-[1.2] object-cover"
                         autoPlay
                         muted
                         loop
