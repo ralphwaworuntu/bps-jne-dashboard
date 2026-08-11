@@ -13,3 +13,6 @@ backend/database.db-shm
 backend/database.db-wal
 **/__pycache__/
 
+# Graphify knowledge graph (regenerate: graphify extract . --code-only)
+graphify-out/
+

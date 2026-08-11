@@ -410,12 +410,16 @@ def daily_file_path(date_iso: str) -> Path:
     return INBOUND_DAILY_DIR / f"{date_iso}.csv"
 
 
+def pivot_cache_path(date_iso: str) -> Path:
+    return INBOUND_DAILY_DIR / f"{date_iso}.pivot.json"
+
+
 def list_available_dates() -> List[str]:
     if not INBOUND_DAILY_DIR.exists():
         return []
     dates = []
     for p in INBOUND_DAILY_DIR.glob("*.csv"):
-        if p.name.endswith(".meta"):
+        if p.name.endswith(".meta") or p.name.endswith(".pivot.json"):
             continue
         stem = p.stem
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", stem):
@@ -492,8 +496,7 @@ def read_inbound_frame(date_iso: Optional[str] = None) -> pd.DataFrame:
                 df["AWB"] = df["AWB"].map(_strip_apostrophe)
             if "ID_ACCOUNT" in df.columns:
                 df["ID_ACCOUNT"] = df["ID_ACCOUNT"].map(_strip_apostrophe)
-            # VLOOKUP DEST → Coding NTT (kolom 4, 8, 9, 10)
-            df = apply_geo_from_dest(df)
+            # Bake-once: geo sudah diisi saat upload; jangan VLOOKUP ulang saat read.
             frames.append(df)
         except Exception:
             continue
@@ -625,6 +628,9 @@ def save_inbound_for_date(
         meta_old = path.with_suffix(path.suffix + ".meta")
         if meta_old.exists():
             meta_old.replace(archive / f"{date_iso}_{ts}.csv.meta")
+        pivot_old = pivot_cache_path(date_iso)
+        if pivot_old.exists():
+            pivot_old.replace(archive / f"{date_iso}_{ts}.pivot.json")
 
     day_df.to_csv(path, index=False)
     meta = {
@@ -640,6 +646,11 @@ def save_inbound_for_date(
             json.dumps(meta, ensure_ascii=False), encoding="utf-8"
         )
     except OSError:
+        pass
+    # Bake pivot sekali saat save (hasil siap pakai).
+    try:
+        write_inbound_pivot_artifacts(date_iso, day_df)
+    except Exception:
         pass
     return path
 
@@ -746,21 +757,17 @@ def _pivot_cabang_zone(filtered: pd.DataFrame) -> tuple[List[dict], Dict[str, in
     return rows_out, grand
 
 
-def build_inbound_pivot(
+def _compute_inbound_pivot_payload(
+    df: pd.DataFrame,
     date_iso: str,
     wilayah_grouping: Optional[str] = None,
     kind: str = "inbound",
 ) -> dict:
-    """Pivot Cabang × Zone.
-
-    kind=inbound → PIVOT INBOUND
-    kind=un_inbound → PIVOT UN INBOUND
-    """
+    """Hitung pivot dari frame (tanpa baca ulang Master)."""
     kind_norm = (kind or "inbound").strip().lower()
     if kind_norm not in {"inbound", "un_inbound"}:
         kind_norm = "inbound"
 
-    df = read_inbound_frame(date_iso)
     empty = {
         "date": date_iso,
         "kind": kind_norm,
@@ -814,6 +821,83 @@ def build_inbound_pivot(
         ),
         "row_count_source": int(len(bucket)),
     }
+
+
+def write_inbound_pivot_artifacts(
+    date_iso: str,
+    df: Optional[pd.DataFrame] = None,
+) -> Path:
+    """Bake pivot All (inbound + un_inbound) ke {date}.pivot.json."""
+    INBOUND_DAILY_DIR.mkdir(parents=True, exist_ok=True)
+    frame = df if df is not None else read_inbound_frame(date_iso)
+    payload = {
+        "date": date_iso,
+        "wilayah_options": sorted(
+            {
+                str(v).strip()
+                for v in _wilayah_series(frame).tolist()
+                if str(v).strip()
+            },
+            key=lambda x: x.lower(),
+        ),
+        "inbound": _compute_inbound_pivot_payload(frame, date_iso, None, "inbound"),
+        "un_inbound": _compute_inbound_pivot_payload(
+            frame, date_iso, None, "un_inbound"
+        ),
+        "baked_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    # Drop nested available_dates duplication noise from kind payloads for storage size;
+    # keep on kind payloads for API compatibility when served directly.
+    path = pivot_cache_path(date_iso)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def build_inbound_pivot(
+    date_iso: str,
+    wilayah_grouping: Optional[str] = None,
+    kind: str = "inbound",
+) -> dict:
+    """Pivot Cabang × Zone — baca cache siap pakai bila All; filter wilayah rebuild ringan dari CSV.
+
+    kind=inbound → PIVOT INBOUND
+    kind=un_inbound → PIVOT UN INBOUND
+    """
+    kind_norm = (kind or "inbound").strip().lower()
+    if kind_norm not in {"inbound", "un_inbound"}:
+        kind_norm = "inbound"
+
+    use_all_wilayah = (
+        not wilayah_grouping or wilayah_grouping in ("", "(All)", "All")
+    )
+
+    if use_all_wilayah:
+        ppath = pivot_cache_path(date_iso)
+        if ppath.is_file():
+            try:
+                cached = json.loads(ppath.read_text(encoding="utf-8"))
+                block = cached.get(kind_norm) or {}
+                if isinstance(block, dict) and "rows" in block:
+                    block = dict(block)
+                    block["kind"] = kind_norm
+                    block["available_dates"] = list_available_dates()
+                    block["wilayah_options"] = cached.get(
+                        "wilayah_options", block.get("wilayah_options", [])
+                    )
+                    return block
+            except Exception:
+                pass
+        # Migrasi data lama: bake sekali lalu serve
+        df = read_inbound_frame(date_iso)
+        try:
+            write_inbound_pivot_artifacts(date_iso, df)
+        except Exception:
+            pass
+        return _compute_inbound_pivot_payload(df, date_iso, None, kind_norm)
+
+    # Filter wilayah: hitung dari CSV (geo sudah baked), tanpa Master lookup
+    df = read_inbound_frame(date_iso)
+    return _compute_inbound_pivot_payload(df, date_iso, wilayah_grouping, kind_norm)
 
 
 def list_inbound_detail(

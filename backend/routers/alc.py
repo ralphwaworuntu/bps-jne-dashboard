@@ -62,6 +62,139 @@ def _parsed_path(kind: str, month: int, year: int) -> Path:
     return _kind_dir(kind) / f"{_period_stem(kind, month, year)}.csv"
 
 
+def _merged_dir() -> Path:
+    return ALC_PENJUALAN_DIR / "merged"
+
+
+def _merged_csv_path(year: int, month: int) -> Path:
+    return _merged_dir() / f"{year}_{month:02d}.csv"
+
+
+def _merged_stats_path(year: int, month: int) -> Path:
+    return _merged_dir() / f"{year}_{month:02d}.stats.json"
+
+
+def _bake_period_merge(
+    sco_rec: Optional[AlcPenjualanUpload],
+    apex_rec: Optional[AlcPenjualanUpload],
+) -> tuple[List[dict], dict]:
+    """Merge SCO∩APEX untuk satu periode dan tulis artifact siap pakai."""
+    year = int((sco_rec or apex_rec).year)
+    month = int((sco_rec or apex_rec).month)
+    sco_rows = _load_records_from_upload(sco_rec) if sco_rec else []
+    apex_rows = _load_records_from_upload(apex_rec) if apex_rec else []
+    merged, stats = merge_sco_apex_by_awb(sco_rows, apex_rows)
+    incomplete = sco_rec is None or apex_rec is None
+    period_stat = {
+        "year": year,
+        "month": month,
+        "has_sco": sco_rec is not None,
+        "has_apex": apex_rec is not None,
+        "incomplete": incomplete,
+        **stats,
+    }
+
+    _merged_dir().mkdir(parents=True, exist_ok=True)
+    csv_path = _merged_csv_path(year, month)
+    stats_path = _merged_stats_path(year, month)
+    if incomplete:
+        # Periode belum lengkap: hapus artifact lama agar GET tidak baca merge basi.
+        if csv_path.exists():
+            csv_path.unlink()
+        if stats_path.exists():
+            stats_path.unlink()
+        return [], period_stat
+
+    pd.DataFrame(merged, columns=PENJUALAN_COLUMNS).to_csv(csv_path, index=False)
+    stats_path.write_text(
+        json.dumps(
+            {**period_stat, "baked_at": datetime.now().isoformat(timespec="seconds")},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return merged, period_stat
+
+
+def _load_baked_period(year: int, month: int) -> tuple[Optional[List[dict]], Optional[dict]]:
+    csv_path = _merged_csv_path(year, month)
+    stats_path = _merged_stats_path(year, month)
+    if not csv_path.is_file():
+        return None, None
+    try:
+        df = pd.read_csv(csv_path, dtype=str, keep_default_na=False)
+        df = normalize_penjualan_columns(df).fillna("")
+        records = df.to_dict(orient="records")
+    except Exception:
+        return None, None
+    stats: dict = {}
+    if stats_path.is_file():
+        try:
+            stats = json.loads(stats_path.read_text(encoding="utf-8"))
+        except Exception:
+            stats = {}
+    return records, stats
+
+
+def _load_merged_all_periods(uploads: List[AlcPenjualanUpload]) -> Dict[str, Any]:
+    """Baca merged artifact per periode; bake sekali jika belum ada (migrasi)."""
+    pairs = pair_uploads_by_period(uploads)
+    combined: List[dict] = []
+    period_stats: List[dict] = []
+    totals = {
+        "sco_awb_count": 0,
+        "apex_awb_count": 0,
+        "matched_awb_count": 0,
+        "only_sco_count": 0,
+        "only_apex_count": 0,
+        "merged_row_count": 0,
+        "periods_paired": 0,
+        "periods_incomplete": 0,
+        "awb_count_equal": True,
+        "awb_content_equal": True,
+    }
+
+    for sco_rec, apex_rec in pairs:
+        year = int((sco_rec or apex_rec).year)
+        month = int((sco_rec or apex_rec).month)
+        incomplete = sco_rec is None or apex_rec is None
+
+        if incomplete:
+            totals["periods_incomplete"] += 1
+            _, stats = _bake_period_merge(sco_rec, apex_rec)
+            period_stats.append(stats)
+            continue
+
+        records, stats = _load_baked_period(year, month)
+        if records is None:
+            records, stats = _bake_period_merge(sco_rec, apex_rec)
+
+        totals["periods_paired"] += 1
+        combined.extend(records or [])
+        period_stats.append(stats or {})
+        for key in (
+            "sco_awb_count",
+            "apex_awb_count",
+            "matched_awb_count",
+            "only_sco_count",
+            "only_apex_count",
+            "merged_row_count",
+        ):
+            totals[key] += int((stats or {}).get(key, 0) or 0)
+        totals["awb_count_equal"] = totals["awb_count_equal"] and bool(
+            (stats or {}).get("awb_count_equal", True)
+        )
+        totals["awb_content_equal"] = totals["awb_content_equal"] and bool(
+            (stats or {}).get("awb_content_equal", True)
+        )
+
+    return {
+        "records": combined,
+        "match": {**totals, "periods": period_stats},
+    }
+
+
 def _safe_filename(name: str) -> str:
     base = Path(name or "file").name
     cleaned = re.sub(r"[^a-zA-Z0-9._\-]", "_", base)
@@ -198,6 +331,20 @@ async def upload_penjualan(
     session.commit()
     session.refresh(record)
 
+    # Bake merged SCO∩APEX untuk periode ini (hasil siap pakai).
+    try:
+        all_period = session.exec(
+            select(AlcPenjualanUpload).where(
+                AlcPenjualanUpload.month == month,
+                AlcPenjualanUpload.year == year,
+            )
+        ).all()
+        sco_rec = next((r for r in all_period if str(r.kind).upper() == "SCO"), None)
+        apex_rec = next((r for r in all_period if str(r.kind).upper() == "APEX"), None)
+        await run_in_excel_worker(_bake_period_merge, sco_rec, apex_rec)
+    except Exception:
+        pass
+
     create_notification(
         session,
         title="Upload Success",
@@ -253,64 +400,8 @@ def _load_records_from_upload(rec: AlcPenjualanUpload) -> List[dict]:
 
 
 def _merge_all_periods(uploads: List[AlcPenjualanUpload]) -> Dict[str, Any]:
-    pairs = pair_uploads_by_period(uploads)
-    combined: List[dict] = []
-    period_stats: List[dict] = []
-    totals = {
-        "sco_awb_count": 0,
-        "apex_awb_count": 0,
-        "matched_awb_count": 0,
-        "only_sco_count": 0,
-        "only_apex_count": 0,
-        "merged_row_count": 0,
-        "periods_paired": 0,
-        "periods_incomplete": 0,
-        "awb_count_equal": True,
-        "awb_content_equal": True,
-    }
-
-    for sco_rec, apex_rec in pairs:
-        sco_rows = _load_records_from_upload(sco_rec) if sco_rec else []
-        apex_rows = _load_records_from_upload(apex_rec) if apex_rec else []
-        merged, stats = merge_sco_apex_by_awb(sco_rows, apex_rows)
-        combined.extend(merged)
-
-        year = (sco_rec or apex_rec).year if (sco_rec or apex_rec) else None
-        month = (sco_rec or apex_rec).month if (sco_rec or apex_rec) else None
-        incomplete = sco_rec is None or apex_rec is None
-        if incomplete:
-            totals["periods_incomplete"] += 1
-        else:
-            totals["periods_paired"] += 1
-
-        period_stats.append(
-            {
-                "year": year,
-                "month": month,
-                "has_sco": sco_rec is not None,
-                "has_apex": apex_rec is not None,
-                **stats,
-            }
-        )
-        for key in (
-            "sco_awb_count",
-            "apex_awb_count",
-            "matched_awb_count",
-            "only_sco_count",
-            "only_apex_count",
-            "merged_row_count",
-        ):
-            totals[key] += int(stats.get(key, 0) or 0)
-        totals["awb_count_equal"] = totals["awb_count_equal"] and bool(stats.get("awb_count_equal"))
-        totals["awb_content_equal"] = totals["awb_content_equal"] and bool(stats.get("awb_content_equal"))
-
-    return {
-        "records": combined,
-        "match": {
-            **totals,
-            "periods": period_stats,
-        },
-    }
+    """Kompatibilitas nama lama — baca/bake artifact merged."""
+    return _load_merged_all_periods(uploads)
 
 
 @router.get("/penjualan")

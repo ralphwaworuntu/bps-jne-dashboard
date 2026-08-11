@@ -1534,45 +1534,79 @@ def apply_lt_im_1st_attempt(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _coerce_reminder_datetime(value: Any) -> Optional[datetime]:
+    """Parse AG/AP untuk rumus AH — datetime penuh, fallback tanggal saja."""
+    dt = _parse_apex_datetime(value)
+    if dt is not None:
+        return dt
+    d = _parse_stored_date(value)
+    return datetime.combine(d, datetime.min.time()) if d else None
+
+
 def apply_reminder_1st_attempt(df: pd.DataFrame) -> pd.DataFrame:
-    """AH — bandingkan AG vs AP+ETD, atau sisa hari wajib runsheet."""
+    """AH — Excel:
+
+    =IF(AG<>"",
+      IF(CL+AP-AG<0,
+        "SUDAH RUNSHEET - 1st Attempt Over SLA",
+        "SUDAH RUNSHEET - 1st Attempt On SLA"),
+      IF((AP+CL)-TODAY()>=6,
+        "MASIH ON SLA",
+        IF(DAYS((AP+CL),TODAY())=0,
+          "HARI INI WAJIB RUNSHEET",
+          IF((AP+CL)-TODAY()<0,
+            "BELUM RUNSHEET - SUDAH OVER SLA 1st Attemp",
+            DAYS((AP+CL),TODAY())&" HARI LAGI WAJIB RUNSHEET"))))
+
+    AG=1ST ATTEMPT DATE FIX, AP=TGL_ENTRY, CL=ETD (lihat Ekstraksi_Heading_Kolom.md).
+    """
     out = df.copy()
     today = date.today()
+    today_dt = datetime.combine(today, datetime.min.time())
     values: List[str] = []
     for idx in out.index:
         ag_raw = out.at[idx, "1ST ATTEMPT DATE FIX"] if "1ST ATTEMPT DATE FIX" in out.columns else ""
-        entry = _parse_apex_datetime(out.at[idx, "TGL_ENTRY"] if "TGL_ENTRY" in out.columns else "")
+        entry = _coerce_reminder_datetime(
+            out.at[idx, "TGL_ENTRY"] if "TGL_ENTRY" in out.columns else ""
+        )
         etd = _to_int_days(out.at[idx, "ETD"] if "ETD" in out.columns else "")
 
+        # IF(AG<>"", …)
         if not _is_blank(ag_raw):
-            ag_dt = _parse_apex_datetime(ag_raw)
-            if ag_dt is None:
-                d = _parse_stored_date(ag_raw)
-                ag_dt = datetime.combine(d, datetime.min.time()) if d else None
+            ag_dt = _coerce_reminder_datetime(ag_raw)
             if entry is None or etd is None or ag_dt is None:
                 values.append("")
             else:
-                # CL+AP-AG < 0 → Over SLA
-                delta = etd + (entry.date() - ag_dt.date()).days
+                # Excel serial: CL+AP-AG (ikutkan jam jika ada)
+                delta = etd + (entry - ag_dt).total_seconds() / 86400.0
                 if delta < 0:
                     values.append("SUDAH RUNSHEET - 1st Attempt Over SLA")
                 else:
                     values.append("SUDAH RUNSHEET - 1st Attempt On SLA")
             continue
 
+        # AG kosong — butuh AP + CL
         if entry is None or etd is None:
             values.append("")
             continue
-        deadline = entry.date() + timedelta(days=etd)
-        remaining = (deadline - today).days  # DAYS(AP+CL, TODAY)
-        if remaining >= 6:
+
+        deadline_dt = entry + timedelta(days=etd)  # AP+CL
+        # (AP+CL)-TODAY() — serial hari (bisa pecahan)
+        remaining_serial = (deadline_dt - today_dt).total_seconds() / 86400.0
+        # DAYS((AP+CL), TODAY()) — beda tanggal saja
+        remaining_days = _excel_days(deadline_dt, today_dt)
+        if remaining_days is None:
+            values.append("")
+            continue
+
+        if remaining_serial >= 6:
             values.append("MASIH ON SLA")
-        elif remaining == 0:
+        elif remaining_days == 0:
             values.append("HARI INI WAJIB RUNSHEET")
-        elif remaining < 0:
+        elif remaining_serial < 0:
             values.append("BELUM RUNSHEET - SUDAH OVER SLA 1st Attemp")
         else:
-            values.append(f"{remaining} HARI LAGI WAJIB RUNSHEET")
+            values.append(f"{remaining_days} HARI LAGI WAJIB RUNSHEET")
     out["REMINDER 1ST ATTEMPT"] = values
     return out
 
@@ -1898,10 +1932,12 @@ def save_ctc_upload(
     original_filename: Optional[str] = None,
     uploaded_by: Optional[str] = None,
 ) -> Path:
-    """Simpan upload CTC per periode (replace file periode tersebut)."""
+    """Simpan upload CTC per periode (replace file periode tersebut).
+
+    Bake-once: `df` harus sudah di-enrich oleh `parse_ctc_upload` (jangan enrich ulang).
+    """
     mode = (period_mode or "harian").strip().lower()
     day_df = _ensure_detail_columns(df.copy())
-    day_df = enrich_ctc_columns(day_df)
 
     if mode == "bulanan":
         CTC_MONTHLY_DIR.mkdir(parents=True, exist_ok=True)

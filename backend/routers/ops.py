@@ -28,6 +28,7 @@ from utils.file_manager import save_upload_with_history
 from utils.firstmile_logic import process_ots_general, process_ots_cabang
 from utils.firstmile_report import (
     FIRSTMILE_REPORT_DETAIL_COLUMNS,
+    canonicalize_firstmile_report_df,
     format_report_date,
     list_firstmile_report_rows,
     normalize_firstmile_report_df,
@@ -2608,7 +2609,8 @@ def _format_report_date(value: str) -> str:
 
 def _build_firstmile_report(service: Optional[str] = None) -> dict:
     raw = _read_master_report_df()
-    df = normalize_firstmile_report_df(raw) if not raw.empty else raw
+    # Bake-once: CSV sudah di-enrich saat upload; jangan formula/Master ulang.
+    df = canonicalize_firstmile_report_df(raw) if not raw.empty else raw
     if df.empty:
         empty_gt = {
             "lt_tr_rcc": _empty_tr_rcc_metrics(),
@@ -2814,7 +2816,7 @@ async def get_firstmile_report_services(current_user: User = Depends(get_current
     raw = _read_master_report_df()
     if raw.empty:
         return []
-    df = normalize_firstmile_report_df(raw)
+    df = canonicalize_firstmile_report_df(raw)
     services = sorted(
         {
             str(v).strip()
@@ -3254,6 +3256,30 @@ def _awb_count(row, awb_col: Optional[str]) -> int:
     return 1 if str(row[awb_col]).strip() else 0
 
 
+def compute_kiriman_yes_pivot(
+    table: str,
+    status_pod: Optional[str] = None,
+    cabang: Optional[str] = None,
+    origin: Optional[str] = None,
+    date: Optional[str] = None,
+    period_mode: Optional[str] = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> dict:
+    """Hitung pivot dari CSV enriched (tanpa baca/tulis cache)."""
+    return _build_kiriman_yes_pivot_impl(
+        table=table,
+        status_pod=status_pod,
+        cabang=cabang,
+        origin=origin,
+        date=date,
+        period_mode=period_mode,
+        month=month,
+        update_day=update_day,
+        use_cache=False,
+    )
+
+
 def _build_kiriman_yes_pivot(
     table: str,
     status_pod: Optional[str] = None,
@@ -3264,13 +3290,41 @@ def _build_kiriman_yes_pivot(
     month: Optional[str] = None,
     update_day: Optional[str] = None,
 ) -> dict:
+    """Pivot Excel — baca cache All bila tanpa filter; selain itu hitung dari CSV."""
+    return _build_kiriman_yes_pivot_impl(
+        table=table,
+        status_pod=status_pod,
+        cabang=cabang,
+        origin=origin,
+        date=date,
+        period_mode=period_mode,
+        month=month,
+        update_day=update_day,
+        use_cache=True,
+    )
+
+
+def _build_kiriman_yes_pivot_impl(
+    table: str,
+    status_pod: Optional[str] = None,
+    cabang: Optional[str] = None,
+    origin: Optional[str] = None,
+    date: Optional[str] = None,
+    period_mode: Optional[str] = "harian",
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+    *,
+    use_cache: bool,
+) -> dict:
     """Pivot Excel:
     DATABASE — Rows=Destinasi, Columns=PROGRESS, Values=Count of AWB
     OTS      — Rows=TRANSAKSI-TODAY→Destinasi, Columns=PROGRESS (filter OTS), Values=Count of AWB
     """
     from utils.kiriman_yes import (
+        bake_kiriman_yes_pivots,
         list_upload_dates,
         period_label,
+        read_kiriman_yes_pivot_cache,
         resolve_period,
     )
 
@@ -3279,12 +3333,6 @@ def _build_kiriman_yes_pivot(
         date=date,
         month=month,
         update_day=update_day,
-    )
-    df = _read_kiriman_yes_df(
-        date_iso,
-        period_mode=mode,
-        month=month_v,
-        update_day=day_v,
     )
     upload_dates = list_upload_dates(mode)
     label = period_label(mode, date=date_iso, month=month_v, update_day=day_v)
@@ -3296,6 +3344,43 @@ def _build_kiriman_yes_pivot(
         "update_day": day_v,
         "period_label": label,
     }
+
+    filters_all = (
+        (not status_pod or status_pod in ("", "(All)", "All"))
+        and (not cabang or cabang in ("", "(All)", "All"))
+        and (not origin or origin in ("", "(All)", "All"))
+    )
+    table_key = "database" if table == "database" else "ots"
+
+    if use_cache and filters_all:
+        cached = read_kiriman_yes_pivot_cache(
+            mode, date=date_iso, month=month_v, update_day=day_v
+        )
+        if cached and isinstance(cached.get(table_key), dict):
+            payload = dict(cached[table_key])
+            payload.update(period_meta)
+            return payload
+        # Migrasi: bake sekali dari CSV enriched
+        try:
+            bake_kiriman_yes_pivots(
+                mode, date=date_iso, month=month_v, update_day=day_v
+            )
+            cached = read_kiriman_yes_pivot_cache(
+                mode, date=date_iso, month=month_v, update_day=day_v
+            )
+            if cached and isinstance(cached.get(table_key), dict):
+                payload = dict(cached[table_key])
+                payload.update(period_meta)
+                return payload
+        except Exception:
+            pass
+
+    df = _read_kiriman_yes_df(
+        date_iso,
+        period_mode=mode,
+        month=month_v,
+        update_day=day_v,
+    )
 
     col_keys = list(DB_STATUS_COLS if table == "database" else OTS_STATUS_COLS)
     empty_db = {

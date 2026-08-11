@@ -84,8 +84,26 @@ Kerjakan berurutan jika environment belum siap:
 - All Inbound & CTC: filter UN INBOUND (Bagian A) lalu take out INBOUND melanjutkan filter A — lihat `proses take out data inbound.md`.
 - UN RUNSHEET: pipeline di `backend/utils/un_runsheet.py`.
 - **Olah data besar (wajib):** upload lewat job async (`utils/process_jobs.py` + `GET /api/jobs/{id}`); UI progress via `frontend/src/lib/uploadJobProgress.ts`.
-- **Hasil siap pakai:** hitung sekali saat job (enrich/pipeline), simpan CSV/cache per tanggal atau bulan; tampilan/export/pivot **baca hasil**, jangan hitung ulang. CTC: `ctc_daily` / `ctc_monthly`. UN RUNSHEET: `{date}.csv` + `{date}.filtered.csv` + `{date}.pivot.json`.
+- **Hasil siap pakai (bake-once):** hitung sekali saat upload/job (enrich/pipeline/pivot), simpan CSV/cache; tampilan/export/pivot **baca hasil**, jangan VLOOKUP/formula ulang. Artifact utama:
+  - CTC: `ctc_daily` / `ctc_monthly`
+  - UN RUNSHEET: `{date}.csv` + `{date}.filtered.csv` + `{date}.pivot.json`
+  - Inbound daily: `{date}.csv` + `{date}.pivot.json` (geo Coding NTT di-bake saat upload)
+  - Kiriman YES: period CSV + `kiriman_yes.pivot.json`
+  - Firstmile Report: `master_report_data.csv` (formula Master di-bake saat upload)
+  - ALC Penjualan: `uploads/alc_penjualan/merged/{year}_{mm}.csv` (+ `.stats.json`)
+- **Master Data berubah:** tidak cascade otomatis — upload ulang dataset terkait agar lookup ikut terbarui.
 - **Fase 3 lokal:** Postgres (`DATABASE_URL`) + Redis (`REDIS_URL`) + Celery worker (`celery_app.py`); concurrency default 2; kontrak `job_id` tidak berubah.
+
+## Graphify (hemat token AI)
+
+Knowledge graph lokal di `graphify-out/` (AST code-only, tanpa API).
+
+- Install CLI: `pip install --user graphifyy` → binary di `%APPDATA%\Python\Python314\Scripts\graphify.exe`
+- Cursor rule: `.cursor/rules/graphify.mdc` (`alwaysApply`) — agent wajib `graphify query/path/explain` sebelum Grep/Read besar
+- Bangun ulang: `graphify extract . --code-only`
+- Update setelah ubah kode: `graphify update .`
+- Ignore data besar: `.graphifyignore` (uploads, node_modules, xlsx/csv, dll.)
+- Hook git: `graphify hook install` (rebuild ringan setelah commit)
 
 ## Jika user bilang “jalankan / setup project”
 

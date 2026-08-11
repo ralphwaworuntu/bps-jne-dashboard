@@ -619,8 +619,8 @@ def _apply_firstmile_formulas(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def normalize_firstmile_report_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Rename kolom sumber ke skema Report Firstmile; pastikan semua header ada."""
+def canonicalize_firstmile_report_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename/isi header saja — tanpa formula Master (untuk baca artifact bake-once)."""
     if df is None or df.empty:
         return pd.DataFrame(columns=FIRSTMILE_REPORT_DETAIL_COLUMNS)
 
@@ -639,6 +639,16 @@ def normalize_firstmile_report_df(df: pd.DataFrame) -> pd.DataFrame:
         missing_df = pd.DataFrame({c: [""] * len(out) for c in missing})
         out = pd.concat([out, missing_df], axis=1)
     out = out.fillna("")
+    for col in FIRSTMILE_REPORT_DETAIL_COLUMNS:
+        out[col] = out[col].astype(str)
+    return out[FIRSTMILE_REPORT_DETAIL_COLUMNS]
+
+
+def normalize_firstmile_report_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename + apply formulas Master — hanya untuk upload/job bake-once."""
+    out = canonicalize_firstmile_report_df(df)
+    if out.empty:
+        return out
     out = _apply_firstmile_formulas(out)
     for col in FIRSTMILE_REPORT_DETAIL_COLUMNS:
         out[col] = out[col].astype(str)
@@ -663,7 +673,8 @@ def list_firstmile_report_rows(
     *,
     service: Optional[str] = None,
 ) -> List[dict]:
-    normalized = normalize_firstmile_report_df(df)
+    # Bake-once: CSV sudah berisi hasil formula; jangan VLOOKUP ulang.
+    normalized = canonicalize_firstmile_report_df(df)
     if normalized.empty:
         return []
 

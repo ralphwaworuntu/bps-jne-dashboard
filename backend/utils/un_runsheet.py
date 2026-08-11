@@ -17,7 +17,6 @@ from utils.ctc_inbound import (
     _h_plus,
     _is_blank,
     _parse_apex_datetime,
-    enrich_ctc_columns,
     parse_ctc_upload,
 )
 from utils.inbound_pivot import _cell_str
@@ -85,8 +84,9 @@ def save_un_runsheet_for_date(
     original_filename: Optional[str] = None,
     uploaded_by: Optional[str] = None,
 ) -> Path:
+    """Simpan CSV harian. Bake-once: `df` sudah di-enrich oleh parse (jangan enrich ulang)."""
     UN_RUNSHEET_DAILY_DIR.mkdir(parents=True, exist_ok=True)
-    day_df = enrich_ctc_columns(df.copy())
+    day_df = df.copy()
     day_df[UPLOAD_DATE_COL] = date_iso
     path = daily_file_path(date_iso)
     day_df.to_csv(path, index=False, encoding="utf-8-sig")

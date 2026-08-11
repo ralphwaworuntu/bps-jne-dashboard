@@ -72,6 +72,100 @@ def meta_path_for_period(
     ).with_name(DATA_FILENAME + ".meta")
 
 
+def pivot_path_for_period(
+    period_mode: Optional[str] = "harian",
+    *,
+    date: Optional[str] = None,
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> Path:
+    return period_folder(
+        period_mode, date=date, month=month, update_day=update_day
+    ) / "kiriman_yes.pivot.json"
+
+
+def read_kiriman_yes_pivot_cache(
+    period_mode: Optional[str] = "harian",
+    *,
+    date: Optional[str] = None,
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    path = pivot_path_for_period(
+        period_mode, date=date, month=month, update_day=update_day
+    )
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def write_kiriman_yes_pivot_cache(
+    payload: Dict[str, Any],
+    period_mode: Optional[str] = "harian",
+    *,
+    date: Optional[str] = None,
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> Path:
+    folder = period_folder(
+        period_mode, date=date, month=month, update_day=update_day
+    )
+    folder.mkdir(parents=True, exist_ok=True)
+    path = pivot_path_for_period(
+        period_mode, date=date, month=month, update_day=update_day
+    )
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def bake_kiriman_yes_pivots(
+    period_mode: Optional[str] = "harian",
+    *,
+    date: Optional[str] = None,
+    month: Optional[str] = None,
+    update_day: Optional[str] = None,
+) -> Path:
+    """Hitung pivot Database + OTS sekali dan simpan ke JSON (hasil siap pakai)."""
+    # Import lokal untuk hindari circular import saat load module.
+    from routers.ops import compute_kiriman_yes_pivot
+
+    mode = _norm_period_mode(period_mode)
+    database = compute_kiriman_yes_pivot(
+        table="database",
+        date=date,
+        period_mode=mode,
+        month=month,
+        update_day=update_day,
+    )
+    ots = compute_kiriman_yes_pivot(
+        table="ots",
+        date=date,
+        period_mode=mode,
+        month=month,
+        update_day=update_day,
+    )
+    payload = {
+        "database": database,
+        "ots": ots,
+        "baked_at": datetime.now().isoformat(timespec="seconds"),
+        "period_mode": mode,
+        "date": date,
+        "month": month,
+        "update_day": update_day,
+    }
+    return write_kiriman_yes_pivot_cache(
+        payload,
+        mode,
+        date=date,
+        month=month,
+        update_day=update_day,
+    )
+
+
 # Back-compat aliases
 def day_dir(date_iso: str) -> Path:
     return period_folder("harian", date=date_iso)
@@ -484,6 +578,12 @@ def save_kiriman_yes_upload(
                 str(old_meta),
                 str(archive / f"kiriman_yes_{archive_key}_{ts}.csv.meta"),
             )
+        old_pivot = pivot_path_for_period(mode, date=date_v, month=month_v, update_day=day_v)
+        if old_pivot.is_file():
+            shutil.move(
+                str(old_pivot),
+                str(archive / f"kiriman_yes_{archive_key}_{ts}.pivot.json"),
+            )
 
     cleaned = clean_kiriman_yes_df(df)
     # Hitung rumus SEKALI saat upload (Origin / Destinasi / PROGRESS / TRANSAKSI - TODAY)
@@ -532,6 +632,12 @@ def save_kiriman_yes_upload(
             )
             + "\n"
         )
+    try:
+        bake_kiriman_yes_pivots(
+            mode, date=date_v, month=month_v, update_day=day_v
+        )
+    except Exception:
+        pass
     return path
 
 
