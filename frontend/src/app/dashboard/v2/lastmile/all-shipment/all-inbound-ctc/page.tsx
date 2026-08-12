@@ -73,7 +73,8 @@ type DetailResponse = {
     pages?: number;
 };
 
-const DEFAULT_PAGE_SIZE = 1000;
+/** 0 = unlimited (backend list_ctc_detail: limit<=0 → semua baris). */
+const DEFAULT_PAGE_SIZE = 0;
 
 export default function AllInboundCtcPage() {
     const { showToast } = useToast();
@@ -563,9 +564,12 @@ export default function AllInboundCtcPage() {
 
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
                         <p className="text-xs text-secondary">
-                            Menampilkan {detailItems.length.toLocaleString("id-ID")} dari{" "}
-                            {totalRows.toLocaleString("id-ID")} baris
-                            {totalPages > 1 ? ` · halaman ${currentPage}/${totalPages}` : ""}
+                            {pageSize === 0
+                                ? `Semua ${detailItems.length.toLocaleString("id-ID")} baris (unlimited)`
+                                : `Menampilkan ${detailItems.length.toLocaleString("id-ID")} dari ${totalRows.toLocaleString("id-ID")} baris`}
+                            {pageSize > 0 && totalPages > 1
+                                ? ` · halaman ${currentPage}/${totalPages}`
+                                : ""}
                             {searchQuery ? ` · server search: "${searchQuery}"` : ""}
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
@@ -579,31 +583,41 @@ export default function AllInboundCtcPage() {
                                     }}
                                     className="ml-2 rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground"
                                 >
+                                    <option value={0}>Semua (unlimited)</option>
                                     <option value={1000}>1.000</option>
                                     <option value={2000}>2.000</option>
                                     <option value={5000}>5.000</option>
                                 </select>
                             </label>
-                            <button
-                                type="button"
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={loadingDetail || currentPage <= 1}
-                                className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
-                            >
-                                Prev
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setCurrentPage((p) =>
-                                        totalPages > 0 ? Math.min(totalPages, p + 1) : p + 1
-                                    )
-                                }
-                                disabled={loadingDetail || (totalPages > 0 && currentPage >= totalPages)}
-                                className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
-                            >
-                                Next
-                            </button>
+                            {pageSize > 0 ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                        disabled={loadingDetail || currentPage <= 1}
+                                        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
+                                    >
+                                        Prev
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                totalPages > 0
+                                                    ? Math.min(totalPages, p + 1)
+                                                    : p + 1
+                                            )
+                                        }
+                                        disabled={
+                                            loadingDetail ||
+                                            (totalPages > 0 && currentPage >= totalPages)
+                                        }
+                                        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                </>
+                            ) : null}
                         </div>
                     </div>
                 </div>

@@ -203,7 +203,8 @@ export default function DatabaseKirimanYesPage() {
     const [searchInput, setSearchInput] = useState("");
     const [searchQuery, setSearchQuery] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
-    const [pageSize, setPageSize] = useState(1000);
+    /** 0 = unlimited (backend list_kiriman_yes_detail: limit<=0 → semua baris). */
+    const [pageSize, setPageSize] = useState(0);
     const [pivotDrill, setPivotDrill] = useState<{
         cabang?: string;
         status_pod?: string;
@@ -1222,7 +1223,12 @@ export default function DatabaseKirimanYesPage() {
                         <div>
                             <h2 className="text-lg font-bold text-foreground">Detail Kiriman Yes</h2>
                             <p className="text-xs text-secondary">
-                                {detailTotal.toLocaleString("id-ID")} baris
+                                {pageSize === 0
+                                    ? `Semua ${detailItems.length.toLocaleString("id-ID")} baris (unlimited)`
+                                    : `${detailItems.length.toLocaleString("id-ID")} dari ${detailTotal.toLocaleString("id-ID")} baris`}
+                                {pageSize > 0 && detailPages > 1
+                                    ? ` · halaman ${currentPage}/${detailPages}`
+                                    : ""}
                                 {searchQuery ? ` · search: "${searchQuery}"` : ""}
                                 {pivotExternalLabel ? ` · ${pivotExternalLabel}` : ""}
                             </p>
@@ -1251,38 +1257,45 @@ export default function DatabaseKirimanYesPage() {
                                     }}
                                     className="rounded-lg border border-border bg-white px-2 py-1 text-xs text-foreground"
                                 >
+                                    <option value={0}>Semua (unlimited)</option>
                                     <option value={1000}>1.000</option>
                                     <option value={2000}>2.000</option>
                                     <option value={5000}>5.000</option>
                                 </select>
                             </label>
-                            <button
-                                type="button"
-                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                                disabled={loadingDetail || currentPage <= 1}
-                                className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
-                            >
-                                Prev
-                            </button>
-                            <span className="text-xs text-secondary">
-                                {currentPage}
-                                {detailPages > 0 ? ` / ${detailPages}` : ""}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() =>
-                                    setCurrentPage((p) =>
-                                        detailPages > 0 ? Math.min(detailPages, p + 1) : p + 1
-                                    )
-                                }
-                                disabled={
-                                    loadingDetail ||
-                                    (detailPages > 0 && currentPage >= detailPages)
-                                }
-                                className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
-                            >
-                                Next
-                            </button>
+                            {pageSize > 0 ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                        disabled={loadingDetail || currentPage <= 1}
+                                        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
+                                    >
+                                        Prev
+                                    </button>
+                                    <span className="text-xs text-secondary">
+                                        {currentPage}
+                                        {detailPages > 0 ? ` / ${detailPages}` : ""}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setCurrentPage((p) =>
+                                                detailPages > 0
+                                                    ? Math.min(detailPages, p + 1)
+                                                    : p + 1
+                                            )
+                                        }
+                                        disabled={
+                                            loadingDetail ||
+                                            (detailPages > 0 && currentPage >= detailPages)
+                                        }
+                                        className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-foreground disabled:opacity-50"
+                                    >
+                                        Next
+                                    </button>
+                                </>
+                            ) : null}
                         </div>
                     </div>
 

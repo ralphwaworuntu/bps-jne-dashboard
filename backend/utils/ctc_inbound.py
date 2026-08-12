@@ -659,6 +659,7 @@ def _parse_apex_datetime(value: Any) -> Optional[datetime]:
         "%m/%d/%y",
         "%m/%d/%Y",
         "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
         "%Y-%m-%d",
         "%d/%m/%y %H:%M",
         "%d/%m/%Y %H:%M",
@@ -679,11 +680,19 @@ def _parse_apex_datetime(value: Any) -> Optional[datetime]:
 
 
 def _parse_stored_date(value: Any) -> Optional[date]:
-    """Parse MAXIMAL BREACH / tanggal tersimpan (YYYY-MM-DD atau APEX)."""
+    """Parse MAXIMAL BREACH / tanggal tersimpan (YYYY-MM-DD[ HH:MM] atau APEX)."""
     text = _cell_str(value)
     if not text:
         return None
-    for fmt in ("%Y-%m-%d", "%m/%d/%y", "%m/%d/%Y", "%d/%m/%Y", "%d/%m/%y"):
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+        "%m/%d/%y",
+        "%m/%d/%Y",
+        "%d/%m/%Y",
+        "%d/%m/%y",
+    ):
         try:
             return datetime.strptime(text, fmt).date()
         except ValueError:
@@ -703,7 +712,11 @@ def _to_int_days(value: Any) -> Optional[int]:
 
 
 def apply_maximal_breach(df: pd.DataFrame) -> pd.DataFrame:
-    """=IF(OR(A="LAZADA", A="SHOPEE"), AP+E, "") — TGL_ENTRY + SLA BREACH hari."""
+    """=IF(OR(A="LAZADA", A="SHOPEE"), AP+E, "") — TGL_ENTRY + SLA BREACH hari.
+
+    Output menyimpan jam:menit dari TGL_ENTRY (format YYYY-MM-DD HH:MM),
+    selaras Excel serial date yang mempertahankan waktu saat AP+E.
+    """
     out = df.copy()
     values: List[str] = []
     for idx in out.index:
@@ -718,7 +731,7 @@ def apply_maximal_breach(df: pd.DataFrame) -> pd.DataFrame:
         if entry is None or days is None:
             values.append("")
             continue
-        values.append((entry + timedelta(days=days)).strftime("%Y-%m-%d"))
+        values.append((entry + timedelta(days=days)).strftime("%Y-%m-%d %H:%M"))
     out["MAXIMAL BREACH"] = values
     return out
 
