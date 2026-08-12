@@ -796,12 +796,12 @@ export default function InboundPage() {
                     const iconCls = isInboundView ? "text-sky-700" : "text-amber-700";
                     const accent = isInboundView ? "text-sky-700" : "text-amber-700";
                     const tableHint = isInboundView
-                        ? "INBOUND: Zone A–D. Dihapus hanya jika IMD kosong + ORIGIN ≠ KOE* + OUTBOUND_MANIFEST terisi ≠ KOE*. Klik angka pivot untuk memfilter."
-                        : "UN INBOUND: INBOUND_MANIFEST_DATE kosong + ORIGIN tidak berawalan KOE (difilter lebih dahulu).";
+                        ? "INBOUND: Zone A–D. Dihapus hanya jika IMD kosong + OUTBOUND_MANIFEST terisi ≠ KOE*. Klik angka pivot untuk memfilter."
+                        : "UN INBOUND: INBOUND_MANIFEST_DATE kosong (ORIGIN KOE* diizinkan).";
                     const emptyMsg = isInboundView
                         ? detailMessage ||
                           "Belum ada data INBOUND untuk filter ini."
-                        : "Belum ada data UN INBOUND (INBOUND_MANIFEST_DATE kosong & ORIGIN ≠ KOE*) untuk filter ini.";
+                        : "Belum ada data UN INBOUND (INBOUND_MANIFEST_DATE kosong) untuk filter ini.";
 
                     return (
                         <>

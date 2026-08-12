@@ -38,16 +38,15 @@ function startsWithKoe(value: unknown): boolean {
         .startsWith("KOE");
 }
 
-/** UN INBOUND: INBOUND_MANIFEST_DATE kosong + ORIGIN tidak berawalan KOE. */
+/** UN INBOUND: INBOUND_MANIFEST_DATE kosong (ORIGIN KOE* diizinkan). */
 export function isUnInboundRow(row: DetailRow): boolean {
     const imd = String(row.INBOUND_MANIFEST_DATE ?? "").trim();
-    if (imd) return false;
-    return !startsWithKoe(row.ORIGIN);
+    return !imd;
 }
 
 /**
- * Hapus dari INBOUND hanya jika ketiga kriteria terpenuhi:
- * IMD kosong + ORIGIN ≠ KOE* + OUTBOUND_MANIFEST terisi ≠ KOE*.
+ * Hapus dari INBOUND hanya jika:
+ * IMD kosong + OUTBOUND_MANIFEST terisi ≠ KOE*.
  * Jika OUTBOUND_MANIFEST non-KOE tapi IMD terisi → jangan hapus.
  */
 export function isInboundDropRow(row: DetailRow): boolean {

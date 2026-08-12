@@ -684,7 +684,7 @@ def _starts_with_koe(value: Any) -> bool:
 
 
 def mask_un_inbound_rows(df: pd.DataFrame) -> pd.Series:
-    """UN INBOUND: INBOUND_MANIFEST_DATE kosong + ORIGIN tidak berawalan KOE."""
+    """UN INBOUND: INBOUND_MANIFEST_DATE kosong (ORIGIN KOE* diizinkan)."""
     if df.empty:
         return pd.Series(dtype=bool)
     imd = (
@@ -692,12 +692,7 @@ def mask_un_inbound_rows(df: pd.DataFrame) -> pd.Series:
         if "INBOUND_MANIFEST_DATE" in df.columns
         else pd.Series([""] * len(df), index=df.index)
     )
-    origin = (
-        df["ORIGIN"] if "ORIGIN" in df.columns else pd.Series([""] * len(df), index=df.index)
-    )
-    imd_blank = imd.map(_cell_str).eq("")
-    origin_not_koe = ~origin.map(_starts_with_koe)
-    return imd_blank & origin_not_koe
+    return imd.map(_cell_str).eq("")
 
 
 def mask_inbound_drop_rows(df: pd.DataFrame) -> pd.Series:
@@ -711,7 +706,7 @@ def mask_inbound_drop_rows(df: pd.DataFrame) -> pd.Series:
     )
     om_s = om.map(_cell_str)
     outbound_non_koe = om_s.ne("") & ~om_s.map(_starts_with_koe)
-    # IMD kosong + ORIGIN ≠ KOE* + OUTBOUND_MANIFEST terisi ≠ KOE*
+    # IMD kosong + OUTBOUND_MANIFEST terisi ≠ KOE*
     return mask_un_inbound_rows(df) & outbound_non_koe
 
 
