@@ -145,7 +145,7 @@ export default function AllInboundCtcPage() {
     const tableHint =
         viewMode === "inbound"
             ? "Semua baris hasil upload APEX (enrichment CTC)."
-            : "UN INBOUND: INBOUND_MANIFEST_DATE blank, MANIFEST_TRANSIT_AGEN blank, SERVICE bukan CTC*, ORIGIN bukan KOE*.";
+            : "UN INBOUND: INBOUND_MANIFEST_DATE blank, MANIFEST_TRANSIT_AGEN blank, SERVICE bukan CTC*.";
 
     useEffect(() => {
         const timer = window.setTimeout(() => {

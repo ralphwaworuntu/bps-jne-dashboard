@@ -50,9 +50,8 @@ Baris ini **diduplikasikan** ke view UN INBOUND (sumber file tidak dihapus).
 | 1 | `INBOUND_MANIFEST_DATE` | harus **Kosong (Blank)** | Belum ada inbound manifest date |
 | 2 | `MANIFEST_TRANSIT_AGEN` | harus **Kosong (Blank)** | Belum ada MTS / transit agen |
 | 3 | `SERVICE` | **tidak** berawalan `CTC` | Bukan layanan CTC* |
-| 4 | `ORIGIN` | **tidak** berawalan `KOE` | Origin bukan KOE* |
 
-Hanya baris yang lolos keempat filter (AND) yang masuk tabel UN INBOUND.
+Hanya baris yang lolos ketiga filter (AND) yang masuk tabel UN INBOUND.
 
 ### Contoh singkat
 
@@ -61,7 +60,7 @@ Hanya baris yang lolos keempat filter (AND) yang masuk tabel UN INBOUND.
 | 1 | *(blank)* | *(blank)* | REG | CGK | Ya |
 | 2 | 2026-07-01 | *(blank)* | REG | CGK | Tidak (IMD terisi) |
 | 3 | *(blank)* | *(blank)* | CTC001 | CGK | Tidak (SERVICE CTC*) |
-| 4 | *(blank)* | *(blank)* | REG | KOE01 | Tidak (ORIGIN KOE*) |
+| 4 | *(blank)* | *(blank)* | REG | KOE01 | Ya (ORIGIN KOE* diizinkan) |
 
 ---
 
@@ -95,7 +94,6 @@ Kandidat = baris yang sudah:
 - `INBOUND_MANIFEST_DATE` blank  
 - `MANIFEST_TRANSIT_AGEN` blank  
 - `SERVICE` bukan CTC*  
-- `ORIGIN` bukan KOE*  
 
 #### Langkah 1 — Sempitkan: `RUNSHEET_NO` tidak berawalan KOE
 

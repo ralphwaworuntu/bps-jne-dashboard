@@ -2049,7 +2049,6 @@ def _un_inbound_mask(df: pd.DataFrame) -> pd.Series:
     1) INBOUND_MANIFEST_DATE blank
     2) MANIFEST_TRANSIT_AGEN blank
     3) SERVICE tidak berawalan CTC
-    4) ORIGIN tidak berawalan KOE
     """
     if df.empty:
         return pd.Series([False] * 0, dtype=bool)
@@ -2069,14 +2068,10 @@ def _un_inbound_mask(df: pd.DataFrame) -> pd.Series:
         if "SERVICE" in df.columns
         else pd.Series([""] * len(df), index=df.index)
     )
-    origin = (
-        df["ORIGIN"] if "ORIGIN" in df.columns else pd.Series([""] * len(df), index=df.index)
-    )
 
     mask = imd.map(_is_blank_text)
     mask = mask & mta.map(_is_blank_text)
     mask = mask & (~service.map(_starts_with_ctc))
-    mask = mask & (~origin.map(_starts_with_koe))
     return mask
 
 
