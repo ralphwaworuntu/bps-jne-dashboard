@@ -1660,8 +1660,14 @@ def apply_validasi_open_pod(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def resolve_validasi_status_cabang(row: Dict[str, Any]) -> str:
-    """AK — nested IF panjang sesuai rumus Excel VALIDASI STATUS CABANG."""
-    aj = _cell_str(row.get("VALIDASI STATUS NASIONAL", ""))
+    """AK — nested IF panjang sesuai rumus Excel VALIDASI STATUS CABANG.
+
+    Excel membandingkan teks tanpa peduli kapitalisasi; AJ dari Master
+    sering "UNDEL - IRREGULARITY" sementara rumus Excel menulis
+    "UNDEL - Irregularity" — harus dicocokkan case-insensitive.
+    """
+    aj_raw = _cell_str(row.get("VALIDASI STATUS NASIONAL", ""))
+    aj = _trim_upper(aj_raw)
     az = _service_prefix(row.get("SERVICE", ""))
     ey = row.get("MANIFEST_TRANSIT_SUBAGEN_NO", "")
     fa = row.get("MANIFEST_INBOUND_SUBAGEN_NO", "")
@@ -1673,8 +1679,8 @@ def resolve_validasi_status_cabang(row: Dict[str, Any]) -> str:
     fb = row.get("MANIFEST_INBOUND_SUBAGEN_DATE", "")
     a = _upper(row.get("CUST NAME", ""))
     h = _cell_str(row.get("UPDATE SLA", ""))
-    cg = _cell_str(row.get("STATUS_POD", ""))
-    cf = _cell_str(row.get("CODING", ""))
+    cg = _trim_upper(row.get("STATUS_POD", ""))
+    cf = _trim_upper(row.get("CODING", ""))
     y = _trim_upper(row.get("STATUS TRACING", ""))
     b = _trim_upper(row.get("INDUSTRY", ""))
     today_dt = datetime.combine(date.today(), datetime.min.time())
@@ -1751,9 +1757,10 @@ def resolve_validasi_status_cabang(row: Dict[str, Any]) -> str:
         return "LAZADA - FU ANTAR ULANG - GAGAL SEGERA RETURN"
     if a == "LAZADA" and h == "OVER SLA":
         return "LAZADA - OVER SLA - CONFIRM TIM CCC"
-    if aj == "UNDEL - Irregularity" and cg == "Missing":
+    # Excel: "UNDEL - Irregularity" — Master Data menyimpan "UNDEL - IRREGULARITY"
+    if aj == "UNDEL - IRREGULARITY" and cg == "MISSING":
         return "MISSING-TERBITKAN KRONOLOGIS"
-    if aj == "UNDEL - Irregularity" and cf == "U12":
+    if aj == "UNDEL - IRREGULARITY" and cf == "U12":
         return "MISROUTE - KROSCEK FISIK - MAKSIMALKAN DL JIKA SUDAH MASUK"
     if aj == "CUSTOMER REQUEST" and cf == "CR5":
         return "REQUEST HOLD - KROSCEK FISIK - KONFIRMASI TIM CS/CC/INBOUND"
@@ -1764,7 +1771,8 @@ def resolve_validasi_status_cabang(row: Dict[str, Any]) -> str:
     ):
         return "KIRIMAN WH1 - PASTIKAN FU TRACING UNDEL & BUKTI CHAT AKURAT"
     if aj in {"UNDELIVERED", "UN STATUS", "CUSTOMER REQUEST"} and b[:11] == "MARKETPLACE":
-        return f"{aj}- MAKSIMALKAN DELIVERY SEBELUM BREACH & PROSES SESUAI REGULASI UNDEL"
+        # Excel: AJ&"- MAKSIMALKAN…" — pakai teks AJ asli dari data
+        return f"{aj_raw}- MAKSIMALKAN DELIVERY SEBELUM BREACH & PROSES SESUAI REGULASI UNDEL"
     if aj in {"UNDELIVERED", "UN STATUS", "CUSTOMER REQUEST"} and b[:11] != "MARKETPLACE":
         return "MAKSIMALKAN PENGANTARAN MIN 3X ANTAR-JIKA GAGAL BUKTI HARUS VALID"
     return ""
