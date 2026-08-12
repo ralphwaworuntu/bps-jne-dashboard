@@ -2163,8 +2163,16 @@ def prepare_ctc_view(
     kind: str = "inbound",
     q: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Bangun view CTC terfilter (kind + search full-kolom) tanpa materialisasi dict penuh."""
+    """Bangun view CTC terfilter (kind + search full-kolom) tanpa materialisasi dict penuh.
+
+    VALIDASI STATUS CABANG dihitung ulang saat baca (ringan, dari kolom AJ/CODING
+    yang sudah baked) agar perbaikan rumus langsung terlihat tanpa upload ulang.
+    """
     df = read_ctc_frame(period_mode, date_iso, month_yyyy_mm, update_day)
+    if not df.empty:
+        # Recompute AK only — input enrichment lain tetap bake-once.
+        df = apply_validasi_status_cabang(df)
+
     kind_norm = (kind or "inbound").strip().lower()
     if kind_norm not in {"inbound", "un_inbound"}:
         kind_norm = "inbound"
