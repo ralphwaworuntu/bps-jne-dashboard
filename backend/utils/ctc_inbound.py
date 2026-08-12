@@ -2165,18 +2165,9 @@ def prepare_ctc_view(
 ) -> pd.DataFrame:
     """Bangun view CTC terfilter (kind + search full-kolom) tanpa materialisasi dict penuh.
 
-    Beberapa kolom dihitung ulang saat baca agar perbaikan rumus langsung terlihat
-    tanpa upload ulang: MAXIMAL BREACH (YYYY-MM-DD HH:MM), SISA AGING, dan
-    VALIDASI STATUS CABANG. Enrichment lain tetap bake-once.
+    Bake-once: baca artifact CSV apa adanya (jangan hitung ulang rumus enrich).
     """
     df = read_ctc_frame(period_mode, date_iso, month_yyyy_mm, update_day)
-    if not df.empty:
-        # Recompute kolom yang sempat berubah rumus setelah bake — tanpa upload ulang.
-        # Input (TGL_ENTRY, SLA BREACH, AJ, CODING, …) tetap dari artifact bake-once.
-        df = apply_maximal_breach(df)
-        df = apply_sisa_aging(df)
-        df = apply_validasi_status_cabang(df)
-
     kind_norm = (kind or "inbound").strip().lower()
     if kind_norm not in {"inbound", "un_inbound"}:
         kind_norm = "inbound"
