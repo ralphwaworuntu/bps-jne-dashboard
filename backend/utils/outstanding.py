@@ -1,6 +1,6 @@
 """Outstanding harian — parse/enrich sama All Inbound & CTC, simpan terpisah.
 
-Tabel: UN INBOUND (filter Bagian A) dan OTS (hapus baris berurutan).
+Tabel: UN INBOUND (pindah baris berurutan) dan OTS (hapus baris berurutan).
 Periode hanya harian.
 """
 from __future__ import annotations
@@ -20,7 +20,6 @@ from utils.ctc_inbound import (
     UPLOAD_DATE_COL,
     _canonicalize_columns,
     _ensure_detail_columns,
-    filter_un_inbound_rows,
     parse_ctc_upload,
 )
 from utils.inbound_pivot import _cell_str, _strip_apostrophe
@@ -86,6 +85,42 @@ def filter_ots_rows(df: pd.DataFrame) -> pd.DataFrame:
     if "AWB_CANCEL" in out.columns:
         cancel = out["AWB_CANCEL"].map(lambda v: _cell_str(v).upper())
         out = out.loc[cancel != "Y"].copy()
+
+    return out
+
+
+def _is_blank_cell(value: Any) -> bool:
+    return _cell_str(value) == ""
+
+
+def _service_is_ctc(value: Any) -> bool:
+    return _cell_str(value).upper().startswith("CTC")
+
+
+def filter_un_inbound_outstanding_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Pindahkan baris ke UN INBOUND per step (1 → 2 → 3), tidak paralel.
+
+    1) INBOUND_MANIFEST_DATE blank
+    2) MANIFEST_TRANSIT_AGEN blank (hanya sisa step 1)
+    3) SERVICE selain CTC* (hanya sisa step 2)
+    4) sisa baris → tabel Un Inbound
+    """
+    if df.empty:
+        return df.copy()
+
+    out = df.copy()
+
+    # Step 1 — INBOUND_MANIFEST_DATE blank
+    if "INBOUND_MANIFEST_DATE" in out.columns:
+        out = out.loc[out["INBOUND_MANIFEST_DATE"].map(_is_blank_cell)].copy()
+
+    # Step 2 — MANIFEST_TRANSIT_AGEN blank (hanya sisa step 1)
+    if "MANIFEST_TRANSIT_AGEN" in out.columns:
+        out = out.loc[out["MANIFEST_TRANSIT_AGEN"].map(_is_blank_cell)].copy()
+
+    # Step 3 — SERVICE selain CTC (hanya sisa step 2)
+    if "SERVICE" in out.columns:
+        out = out.loc[~out["SERVICE"].map(_service_is_ctc)].copy()
 
     return out
 
@@ -160,7 +195,7 @@ def prepare_outstanding_view(
     df = read_outstanding_frame(date_iso)
     kind_norm = normalize_kind(kind)
     if kind_norm == "un_inbound":
-        df = filter_un_inbound_rows(df)
+        df = filter_un_inbound_outstanding_rows(df)
     else:
         df = filter_ots_rows(df)
     if df.empty:
