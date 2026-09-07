@@ -1,11 +1,11 @@
-"""Kebijakan hot / cold untuk arsip uploads ke object storage.
+"""Kebijakan hot / cold untuk arsip uploads ke BEBOX.
 
 Hot window (default 45 hari):
   - CSV/XLSX detail tetap di VPS.
   - Pivot/stats/meta selalu tetap lokal jika keep_local_pivots=true.
 
 Cold (usia > hot_days):
-  - File besar dipindah ke cloud; lokal diganti stub ``{name}.cold.json``.
+  - File besar dipindah ke BEBOX; lokal diganti stub ``{name}.cold.json``.
   - Saat user buka periode lama: pivot tetap dari lokal; detail di-hydrate
     ke cache LRU (hydrate_cache_gb) lalu dibaca seperti file biasa.
 

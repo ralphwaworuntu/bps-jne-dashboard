@@ -261,7 +261,7 @@ export default function SysPerformancePage() {
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm text-secondary">
                             Snapshot real-time dari host API (VPS), layanan DB/Redis/Celery,
-                            antrian job, dan pengaturan API penyimpanan cloud.
+                            antrian job, dan pengaturan API penyimpanan BEBOX.
                         </p>
                     </div>
                     {tab === "monitor" ? (

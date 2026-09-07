@@ -4013,7 +4013,7 @@ async def export_inbound_excel_api(
     except Exception as e:
         from utils.cloud_storage.exceptions import ColdStorageUnavailable
 
-        if isinstance(e, ColdStorageUnavailable) or "cold storage" in str(e).lower():
+        if isinstance(e, ColdStorageUnavailable) or "bebox" in str(e).lower() or "cold storage" in str(e).lower():
             raise HTTPException(status_code=503, detail=str(e)) from e
         raise HTTPException(status_code=500, detail=f"Gagal export Excel: {e!s}") from e
 
@@ -4085,7 +4085,7 @@ async def get_inbound_rows(
     except Exception as e:
         from utils.cloud_storage.exceptions import ColdStorageUnavailable
 
-        if isinstance(e, ColdStorageUnavailable) or "cold storage" in str(e).lower():
+        if isinstance(e, ColdStorageUnavailable) or "bebox" in str(e).lower() or "cold storage" in str(e).lower():
             raise HTTPException(status_code=503, detail=str(e)) from e
         raise HTTPException(status_code=500, detail=f"Gagal membaca detail inbound: {e!s}") from e
 

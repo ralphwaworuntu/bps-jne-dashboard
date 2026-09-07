@@ -26,7 +26,7 @@ def decrypt_secret(token: str) -> str:
     try:
         return _fernet().decrypt(token.encode("ascii")).decode("utf-8")
     except (InvalidToken, ValueError) as exc:
-        raise ValueError("Secret cloud storage tidak bisa didekripsi.") from exc
+        raise ValueError("Secret BEBOX tidak bisa didekripsi.") from exc
 
 
 def mask_secret(plain: str | None) -> str | None:

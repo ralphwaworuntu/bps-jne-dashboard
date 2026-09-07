@@ -82,7 +82,7 @@ def hydrate_from_stub(
     try:
         if not row.enabled:
             raise ColdStorageUnavailable(
-                "Data di cold storage tidak tersedia (API penyimpanan belum diaktifkan)."
+                "Data di BEBOX tidak tersedia (API penyimpanan belum diaktifkan)."
             )
         download_file(row, remote_key, dest)
         if expected:
@@ -98,7 +98,7 @@ def hydrate_from_stub(
         return dest
     except CloudStorageError as exc:
         raise ColdStorageUnavailable(
-            f"Data di cold storage tidak tersedia: {exc}"
+            f"Data di BEBOX tidak tersedia: {exc}"
         ) from exc
     finally:
         if own_session and session is not None:

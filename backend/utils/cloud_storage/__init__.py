@@ -1,4 +1,4 @@
-"""Cloud object-storage helpers (S3-compatible) for IT storage settings."""
+"""Helper penyimpanan BEBOX untuk pengaturan IT."""
 
 from utils.cloud_storage.exceptions import CloudStorageError, ColdStorageUnavailable
 from utils.cloud_storage.settings_store import get_or_create_settings, settings_to_read

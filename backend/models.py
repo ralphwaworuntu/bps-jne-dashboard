@@ -412,10 +412,10 @@ class RoleOption(SQLModel):
 
 
 class CloudStorageSettings(SQLModel, table=True):
-    """Pengaturan API cloud storage untuk arsip data dingin (IT > Sys Performance)."""
+    """Pengaturan API BEBOX untuk arsip data dingin (IT > Sys Performance)."""
     id: Optional[int] = Field(default=None, primary_key=True)
     enabled: bool = Field(default=False)
-    provider: str = Field(default="s3_compatible")
+    provider: str = Field(default="bebox")
     endpoint_url: Optional[str] = None
     region: Optional[str] = Field(default="auto")
     bucket: Optional[str] = None

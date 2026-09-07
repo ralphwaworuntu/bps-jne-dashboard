@@ -66,7 +66,7 @@ export default function StorageSettingsPanel() {
 
     const [form, setForm] = useState({
         enabled: false,
-        provider: "s3_compatible",
+        provider: "bebox",
         endpoint_url: "",
         region: "auto",
         bucket: "",
@@ -83,7 +83,7 @@ export default function StorageSettingsPanel() {
         setSettings(s);
         setForm({
             enabled: s.enabled,
-            provider: s.provider || "s3_compatible",
+            provider: s.provider || "bebox",
             endpoint_url: s.endpoint_url || "",
             region: s.region || "auto",
             bucket: s.bucket || "",
@@ -257,9 +257,9 @@ export default function StorageSettingsPanel() {
         <div className="flex flex-col gap-6">
             <div className="rounded-[var(--radius-card)] border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
                 Pivot / stats tetap di VPS. Detail CSV lebih tua dari hot window
-                dipindah ke cloud lalu dibaca on-demand (hydrate cache). Filter
+                dipindah ke BEBOX lalu dibaca on-demand (hydrate cache). Filter
                 tanggal lama tidak diblokir — tabel detail menampilkan progres
-                unduh dari cloud.
+                unduh dari BEBOX.
             </div>
 
             <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -298,8 +298,8 @@ export default function StorageSettingsPanel() {
             <section className="rounded-[var(--radius-card)] border border-border bg-white p-5">
                 <h3 className="mb-1 font-semibold text-foreground">Koneksi API</h3>
                 <p className="mb-4 text-sm text-secondary">
-                    Endpoint S3-compatible (AWS, R2, MinIO, atau cloud pribadi dengan
-                    kontrak API yang sama). Secret disimpan terenkripsi; kosongkan
+                    Koneksi API BEBOX (endpoint, access key, secret, bucket/prefix).
+                    Secret disimpan terenkripsi; kosongkan
                     field secret untuk mempertahankan yang sudah tersimpan
                     {settings?.secret_access_key_set
                         ? ` (${settings.secret_access_key_masked || "••••"}).`
@@ -310,7 +310,7 @@ export default function StorageSettingsPanel() {
                         <span className="font-semibold text-secondary">Endpoint URL</span>
                         <input
                             className="rounded-[var(--radius-button)] border border-border px-3 py-2"
-                            placeholder="https://s3.example.com"
+                            placeholder="https://api.bebox.example"
                             value={form.endpoint_url}
                             onChange={(e) =>
                                 setForm((p) => ({ ...p, endpoint_url: e.target.value }))
@@ -382,7 +382,7 @@ export default function StorageSettingsPanel() {
                             setForm((p) => ({ ...p, enabled: e.target.checked }))
                         }
                     />
-                    Aktifkan archive ke cloud
+                    Aktifkan archive ke BEBOX
                 </label>
             </section>
 

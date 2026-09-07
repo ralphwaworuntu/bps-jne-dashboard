@@ -21,7 +21,7 @@ def get_or_create_settings(session: Session) -> CloudStorageSettings:
     row = CloudStorageSettings(
         id=1,
         enabled=False,
-        provider="s3_compatible",
+        provider="bebox",
         prefix="bps-jne/",
         hot_days=45,
         size_trigger_gb=100,
@@ -50,7 +50,7 @@ def settings_to_read(
             masked = "••••"
     data = CloudStorageSettingsRead(
         enabled=bool(row.enabled),
-        provider=row.provider or "s3_compatible",
+        provider=(row.provider if row.provider and row.provider != "s3_compatible" else "bebox"),
         endpoint_url=row.endpoint_url,
         region=row.region,
         bucket=row.bucket,
@@ -83,7 +83,7 @@ def apply_update(
     if payload.enabled is not None:
         row.enabled = bool(payload.enabled)
     if payload.provider is not None:
-        provider = (payload.provider or "").strip() or "s3_compatible"
+        provider = (payload.provider or "").strip() or "bebox"
         row.provider = provider
     if payload.endpoint_url is not None:
         row.endpoint_url = (payload.endpoint_url or "").strip() or None

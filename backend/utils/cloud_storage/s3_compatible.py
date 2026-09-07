@@ -1,4 +1,4 @@
-"""Adapter S3-compatible (AWS / R2 / MinIO / cloud pribadi dengan API mirip S3)."""
+"""Adapter API BEBOX untuk upload/download objek arsip."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -67,7 +67,7 @@ def test_connection(row: CloudStorageSettings) -> dict[str, Any]:
         return {
             "ok": True,
             "status": "ok",
-            "provider": row.provider or "s3_compatible",
+            "provider": row.provider or "bebox",
             "bucket": bucket,
             "endpoint_url": (row.endpoint_url or "").strip() or None,
             "detail": "Koneksi berhasil (head_bucket).",

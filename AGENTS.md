@@ -93,7 +93,7 @@ Kerjakan berurutan jika environment belum siap:
   - ALC Penjualan: `uploads/alc_penjualan/merged/{year}_{mm}.csv` (+ `.stats.json`)
 - **Master Data berubah:** tidak cascade otomatis — upload ulang dataset terkait agar lookup ikut terbarui.
 - **Fase 3 lokal:** Postgres (`DATABASE_URL`) + Redis (`REDIS_URL`) + Celery worker (`celery_app.py`); concurrency default 2; kontrak `job_id` tidak berubah.
-- **Cloud archive (opsional):** IT → Sys Performance → tab Penyimpanan API. Hot window default 45 hari + trigger 100 GB (OR). Pivot/stats tetap lokal; CSV detail dingin diganti stub `*.cold.json` lalu di-hydrate on-demand (Inbound daily sudah terhubung). Secret dienkripsi di DB; jangan commit kredensial.
+- **BEBOX archive (opsional):** IT → Sys Performance → tab Penyimpanan API. Hot window default 45 hari + trigger 100 GB (OR). Pivot/stats tetap lokal; CSV detail dingin diganti stub `*.cold.json` lalu di-hydrate on-demand (Inbound daily sudah terhubung). Secret dienkripsi di DB; jangan commit kredensial.
 
 ## Graphify (hemat token AI)
 
