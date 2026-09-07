@@ -1,0 +1,49 @@
+---
+description: Setelah perubahan, selalu commit+push lalu berikan perintah VPS (jangan SSH ke VPS kecuali diminta).
+alwaysApply: true
+---
+
+# Push langsung + perintah VPS
+
+Setelah selesai mengubah kode (kecuali user bilang jangan commit):
+
+1. Commit file relevan (tanpa `.env`, venv, `__pycache__`, uploads, backup).
+2. `git push` ke branch yang sedang dilacak.
+3. **Jangan** SSH/update VPS sendiri kecuali user memintanya secara eksplisit.
+4. Di pesan ke user, selalu sertakan perintah VPS yang siap di-copy, sesuai jenis perubahan:
+
+**Update lengkap (frontend + backend + deps/migrasi):**
+
+```bash
+ssh root@148.230.98.202
+cd /var/www/bps-jne-dashboard
+git pull
+cd backend
+./venv/bin/pip install -r requirements.txt
+./venv/bin/python -m alembic upgrade head
+cd ../frontend
+npm run build
+sudo systemctl restart bps-api bps-celery bps-web
+sudo systemctl is-active bps-api bps-celery bps-web
+```
+
+**Hanya backend (tanpa UI, tanpa paket/migrasi baru):**
+
+```bash
+ssh root@148.230.98.202
+cd /var/www/bps-jne-dashboard
+git pull
+sudo systemctl restart bps-api bps-celery
+```
+
+**Hanya frontend:**
+
+```bash
+ssh root@148.230.98.202
+cd /var/www/bps-jne-dashboard
+git pull
+cd frontend && npm run build
+sudo systemctl restart bps-web
+```
+
+Sebutkan commit hash setelah push agar user bisa cek `git log -1 --oneline` di VPS.
