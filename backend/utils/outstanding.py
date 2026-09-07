@@ -1,6 +1,6 @@
 """Outstanding harian — parse/enrich sama All Inbound & CTC, simpan terpisah.
 
-Tabel: UN INBOUND (filter Bagian A) dan OTS (take-out setara INBOUND CTC).
+Tabel: UN INBOUND (filter Bagian A) dan OTS (hapus baris berurutan).
 Periode hanya harian.
 """
 from __future__ import annotations
@@ -20,11 +20,10 @@ from utils.ctc_inbound import (
     UPLOAD_DATE_COL,
     _canonicalize_columns,
     _ensure_detail_columns,
-    filter_inbound_rows_after_un_inbound,
     filter_un_inbound_rows,
     parse_ctc_upload,
 )
-from utils.inbound_pivot import _strip_apostrophe
+from utils.inbound_pivot import _cell_str, _strip_apostrophe
 from utils.page_util import filter_dataframe_by_query
 
 OTS_DAILY_DIR = ALL_SHIPMENT_DIR / "outstanding_daily"
@@ -48,6 +47,10 @@ def latest_outstanding_daily_path() -> Optional[Path]:
     return files[0]
 
 
+OTS_DROP_STATUS_POD = frozenset({"success", "return shipper"})
+OTS_DROP_CODING = frozenset({"PS2", "PS3", "CR8", "UF"})
+
+
 def normalize_kind(kind: str | None) -> str:
     k = (kind or "ots").strip().lower()
     if k in {"inbound", "ots"}:
@@ -55,6 +58,36 @@ def normalize_kind(kind: str | None) -> str:
     if k == "un_inbound":
         return "un_inbound"
     return "ots"
+
+
+def filter_ots_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Bangun tabel OTS: hapus baris per step (1 → 2 → 3), tidak paralel.
+
+    1) STATUS_POD = Success / Return Shipper → hapus
+    2) CODING = PS2 / PS3 / CR8 / UF → hapus
+    3) AWB_CANCEL = Y → hapus
+    """
+    if df.empty:
+        return df.copy()
+
+    out = df.copy()
+
+    # Step 1 — STATUS_POD
+    if "STATUS_POD" in out.columns:
+        status = out["STATUS_POD"].map(lambda v: _cell_str(v).casefold())
+        out = out.loc[~status.isin(OTS_DROP_STATUS_POD)].copy()
+
+    # Step 2 — CODING (hanya sisa step 1)
+    if "CODING" in out.columns:
+        coding = out["CODING"].map(lambda v: _cell_str(v).upper())
+        out = out.loc[~coding.isin(OTS_DROP_CODING)].copy()
+
+    # Step 3 — AWB_CANCEL (hanya sisa step 2)
+    if "AWB_CANCEL" in out.columns:
+        cancel = out["AWB_CANCEL"].map(lambda v: _cell_str(v).upper())
+        out = out.loc[cancel != "Y"].copy()
+
+    return out
 
 
 def save_outstanding_upload(
@@ -129,7 +162,7 @@ def prepare_outstanding_view(
     if kind_norm == "un_inbound":
         df = filter_un_inbound_rows(df)
     else:
-        df = filter_inbound_rows_after_un_inbound(df)
+        df = filter_ots_rows(df)
     if df.empty:
         return df
     view = df.copy()

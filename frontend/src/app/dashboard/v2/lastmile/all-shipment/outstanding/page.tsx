@@ -113,7 +113,7 @@ export default function OutstandingPage() {
         "Belum ada data untuk tanggal ini. Unggah file lewat Tambah Data, lalu muat ulang setelah data diproses.";
     const tableHint =
         viewMode === "ots"
-            ? "OTS: hasil take-out setara tabel INBOUND di All Inbound & CTC."
+            ? "OTS: hapus berurutan STATUS_POD Success/Return Shipper, lalu CODING PS2/PS3/CR8/UF, lalu AWB_CANCEL = Y."
             : "UN INBOUND: INBOUND_MANIFEST_DATE blank, MANIFEST_TRANSIT_AGEN blank, SERVICE bukan CTC*.";
 
     useEffect(() => {
