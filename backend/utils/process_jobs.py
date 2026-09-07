@@ -460,6 +460,54 @@ def _handle_ctc_upload(job: Dict[str, Any], report: ProgressCb) -> Dict[str, Any
     }
 
 
+def _handle_outstanding_upload(job: Dict[str, Any], report: ProgressCb) -> Dict[str, Any]:
+    from utils.outstanding import parse_outstanding_upload, save_outstanding_upload
+    from utils.notification_manager import create_notification
+    from database import engine
+    from sqlmodel import Session
+
+    payload = job.get("payload") or {}
+    raw_path = Path(str(job.get("raw_path") or ""))
+    if not raw_path.is_file():
+        raise FileNotFoundError("File upload sementara tidak ditemukan")
+
+    report("parsing", 15, "Membaca & mem-parse file Outstanding…")
+    content = raw_path.read_bytes()
+    suffix = str(payload.get("suffix") or raw_path.suffix or ".xlsx")
+    date_iso = str(payload.get("date") or "")
+    filename = str(job.get("original_filename") or "")
+    uploaded_by = str(payload.get("uploaded_by") or "")
+
+    report("enriching", 40, "Menghitung rumus (sama All Inbound & CTC)…")
+    df = parse_outstanding_upload(content, suffix, date_iso)
+
+    report("saving", 80, "Menyimpan hasil siap pakai (CSV)…")
+    saved = save_outstanding_upload(df, date_iso, filename, uploaded_by)
+    rows = int(len(df))
+    try:
+        with Session(engine) as session:
+            create_notification(
+                session,
+                title="Upload Success",
+                message=(
+                    f"Outstanding {date_iso} ({filename}) "
+                    f"berhasil diunggah ({rows} baris)."
+                ),
+                type="success",
+                user_id=int(job.get("user_id") or 0) or None,
+            )
+    except Exception:
+        pass
+
+    return {
+        "rows": rows,
+        "saved_as": str(saved),
+        "period_mode": "harian",
+        "date": date_iso,
+        "period_label": date_iso,
+    }
+
+
 def _handle_un_runsheet_upload(job: Dict[str, Any], report: ProgressCb) -> Dict[str, Any]:
     from utils.un_runsheet import (
         parse_un_runsheet_upload,
@@ -609,6 +657,7 @@ def register_builtin_handlers() -> None:
     register_handler("un_runsheet", _handle_un_runsheet_upload)
     register_handler("kiriman_yes", _handle_kiriman_yes_upload)
     register_handler("cloud_archive", _handle_cloud_archive)
+    register_handler("outstanding", _handle_outstanding_upload)
 
 
 register_builtin_handlers()

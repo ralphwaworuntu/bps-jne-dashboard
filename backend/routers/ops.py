@@ -4277,6 +4277,132 @@ async def export_all_inbound_ctc_xlsx(
         raise HTTPException(status_code=500, detail=f"Gagal export XLSX CTC: {e!s}") from e
 
 
+@router.post("/api/all-shipment/outstanding/upload")
+async def upload_outstanding(
+    request: Request,
+    file: UploadFile = File(...),
+    date: str = Form(""),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Upload Outstanding harian → antre job async (progress via GET /api/jobs/{id})."""
+    from utils.process_jobs import enqueue_job, public_job_view
+
+    date_iso = (date or "").strip()
+    try:
+        datetime.strptime(date_iso, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD") from e
+
+    MAX_FILE_SIZE = 300 * 1024 * 1024
+    if request.headers.get("content-length"):
+        if int(request.headers["content-length"]) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 300MB")
+
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in {".csv", ".xlsx", ".xls"}:
+        raise HTTPException(
+            status_code=400,
+            detail="Upload harus berformat .csv / .xlsx / .xls",
+        )
+
+    await file.seek(0)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="File upload kosong.")
+
+    job = enqueue_job(
+        kind="outstanding",
+        user_id=int(current_user.id),
+        payload={
+            "date": date_iso,
+            "suffix": suffix,
+            "uploaded_by": current_user.email or "",
+        },
+        raw_bytes=content,
+        raw_suffix=suffix,
+        original_filename=file.filename or "",
+    )
+    body = public_job_view(job)
+    body["job_id"] = job["id"]
+    body["message"] = "Upload diterima; pemrosesan dalam antrian"
+    return JSONResponse(status_code=202, content=body)
+
+
+@router.get("/api/all-shipment/outstanding/rows")
+async def get_outstanding_rows(
+    date: str = "",
+    kind: str = "ots",
+    page: int = 1,
+    limit: int = 0,
+    q: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Tabel detail Outstanding (OTS / UN INBOUND) untuk tanggal terpilih."""
+    from utils.outstanding import list_outstanding_detail
+    from utils.excel_worker import run_in_excel_worker
+
+    date_iso = (date or "").strip()
+    try:
+        datetime.strptime(date_iso, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD") from e
+
+    try:
+        return await run_in_excel_worker(
+            list_outstanding_detail,
+            date_iso,
+            kind,
+            page,
+            limit,
+            q,
+        )
+    except Exception as e:
+        from utils.cloud_storage.exceptions import ColdStorageUnavailable
+
+        if isinstance(e, ColdStorageUnavailable) or "bebox" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail=f"Gagal membaca detail Outstanding: {e!s}") from e
+
+
+@router.get("/api/all-shipment/outstanding/export-xlsx")
+async def export_outstanding_xlsx_api(
+    date: str = "",
+    kind: str = "ots",
+    q: Optional[str] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Export XLSX all data Outstanding (harian)."""
+    from utils.outstanding import export_outstanding_xlsx
+    from utils.excel_worker import run_in_excel_worker
+
+    date_iso = (date or "").strip()
+    try:
+        datetime.strptime(date_iso, "%Y-%m-%d")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Format tanggal harus YYYY-MM-DD") from e
+
+    try:
+        payload = await run_in_excel_worker(
+            export_outstanding_xlsx,
+            date_iso,
+            kind,
+            q,
+        )
+        filename = str(payload.get("filename") or "outstanding_export.xlsx")
+        content = payload.get("content") or b""
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except Exception as e:
+        from utils.cloud_storage.exceptions import ColdStorageUnavailable
+
+        if isinstance(e, ColdStorageUnavailable) or "bebox" in str(e).lower():
+            raise HTTPException(status_code=503, detail=str(e)) from e
+        raise HTTPException(status_code=500, detail=f"Gagal export XLSX Outstanding: {e!s}") from e
+
+
 # ──────────────────────────────────────────────
 # All Shipment — UN RUNSHEET (pivot aging + detail)
 # ──────────────────────────────────────────────

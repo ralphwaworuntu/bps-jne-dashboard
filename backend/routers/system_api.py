@@ -106,6 +106,15 @@ def get_system_info(current_user: User = Depends(get_current_active_user)):
     tpl_outstanding = _all_shipment_template_file("outstanding")
     ctc_range_start, ctc_range_end = _range_from_mtime(tpl_ctc)
 
+    ots_daily_path = None
+    try:
+        from utils.outstanding import latest_outstanding_daily_path
+
+        ots_daily_path = latest_outstanding_daily_path()
+    except Exception:
+        ots_daily_path = None
+    outstanding_fresh_path = ots_daily_path or tpl_outstanding
+
     def _kiriman_yes_path():
         try:
             from utils.kiriman_yes import (
@@ -180,6 +189,6 @@ def get_system_info(current_user: User = Depends(get_current_active_user)):
         "all_inbound_ctc_range_end": ctc_range_end,
         "inbound_last_update": get_file_time(tpl_inbound),
         "inbound_filename": get_original_filename(tpl_inbound),
-        "outstanding_last_update": get_file_time(tpl_outstanding),
-        "outstanding_filename": get_original_filename(tpl_outstanding),
+        "outstanding_last_update": get_file_time(outstanding_fresh_path),
+        "outstanding_filename": get_original_filename(outstanding_fresh_path),
     }
