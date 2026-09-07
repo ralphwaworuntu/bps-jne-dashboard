@@ -114,7 +114,7 @@ export default function OutstandingPage() {
     const tableHint =
         viewMode === "ots"
             ? "OTS: hapus berurutan STATUS_POD Success/Return Shipper, lalu CODING PS2/PS3/CR8/UF, lalu AWB_CANCEL = Y."
-            : "UN INBOUND: pilih blank INBOUND_MANIFEST_DATE, lalu blank MANIFEST_TRANSIT_AGEN, lalu SERVICE selain CTC; sisa baris dipindah ke tabel ini.";
+            : "UN INBOUND: pilih blank INBOUND_MANIFEST_DATE, lalu blank MANIFEST_TRANSIT_AGEN, lalu SERVICE berawalan CTC; sisa baris dipindah ke tabel ini.";
 
     useEffect(() => {
         const timer = window.setTimeout(() => {

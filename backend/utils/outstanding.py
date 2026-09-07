@@ -102,7 +102,7 @@ def filter_un_inbound_outstanding_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     1) INBOUND_MANIFEST_DATE blank
     2) MANIFEST_TRANSIT_AGEN blank (hanya sisa step 1)
-    3) SERVICE selain CTC* (hanya sisa step 2)
+    3) SERVICE berawalan CTC (hanya sisa step 2)
     4) sisa baris → tabel Un Inbound
     """
     if df.empty:
@@ -118,9 +118,9 @@ def filter_un_inbound_outstanding_rows(df: pd.DataFrame) -> pd.DataFrame:
     if "MANIFEST_TRANSIT_AGEN" in out.columns:
         out = out.loc[out["MANIFEST_TRANSIT_AGEN"].map(_is_blank_cell)].copy()
 
-    # Step 3 — SERVICE selain CTC (hanya sisa step 2)
+    # Step 3 — SERVICE berawalan CTC (hanya sisa step 2)
     if "SERVICE" in out.columns:
-        out = out.loc[~out["SERVICE"].map(_service_is_ctc)].copy()
+        out = out.loc[out["SERVICE"].map(_service_is_ctc)].copy()
 
     return out
 

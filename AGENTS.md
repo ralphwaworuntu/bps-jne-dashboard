@@ -86,7 +86,7 @@ Kerjakan berurutan jika environment belum siap:
 - **Olah data besar (wajib):** upload lewat job async (`utils/process_jobs.py` + `GET /api/jobs/{id}`); UI progress via `frontend/src/lib/uploadJobProgress.ts`.
 - **Hasil siap pakai (bake-once):** hitung sekali saat upload/job (enrich/pipeline/pivot), simpan CSV/cache; tampilan/export/pivot **baca hasil**, jangan VLOOKUP/formula ulang. Artifact utama:
   - CTC: `ctc_daily` / `ctc_monthly`
-  - Outstanding: `outstanding_daily/{date}.csv` (harian; kolom sama CTC; OTS hapus berurutan STATUS_POD → CODING → AWB_CANCEL; UN INBOUND pilih blank IM date → blank transit agen → SERVICE selain CTC)
+  - Outstanding: `outstanding_daily/{date}.csv` (harian; kolom sama CTC; OTS hapus berurutan STATUS_POD → CODING → AWB_CANCEL; UN INBOUND pilih blank IM date → blank transit agen → SERVICE berawalan CTC)
   - UN RUNSHEET: `{date}.csv` + `{date}.filtered.csv` + `{date}.pivot.json`
   - Inbound daily: `{date}.csv` + `{date}.pivot.json` (geo Coding NTT di-bake saat upload)
   - Kiriman YES: period CSV + `kiriman_yes.pivot.json`
