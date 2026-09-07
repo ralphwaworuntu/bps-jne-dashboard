@@ -418,6 +418,9 @@ export default function InboundPage() {
 
     const loadDetail = useCallback(async () => {
         setLoadingDetail(true);
+        setDetailMessage(
+            "Mengambil detail… periode di luar hot window di-hydrate dari cloud."
+        );
         try {
             const params = new URLSearchParams({
                 date: filterDate,

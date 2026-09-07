@@ -598,10 +598,17 @@ def _handle_kiriman_yes_upload(job: Dict[str, Any], report: ProgressCb) -> Dict[
     }
 
 
+def _handle_cloud_archive(job: Dict[str, Any], report: ProgressCb) -> Dict[str, Any]:
+    from utils.cloud_storage.archive import run_archive
+
+    return run_archive(report=report)
+
+
 def register_builtin_handlers() -> None:
     register_handler("all_inbound_ctc", _handle_ctc_upload)
     register_handler("un_runsheet", _handle_un_runsheet_upload)
     register_handler("kiriman_yes", _handle_kiriman_yes_upload)
+    register_handler("cloud_archive", _handle_cloud_archive)
 
 
 register_builtin_handlers()

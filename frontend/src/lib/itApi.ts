@@ -319,6 +319,148 @@ export async function getSysPerformance(token: string): Promise<SysPerformance> 
     return res.json();
 }
 
+export type CloudStorageSettings = {
+    enabled: boolean;
+    provider: string;
+    endpoint_url: string | null;
+    region: string | null;
+    bucket: string | null;
+    prefix: string;
+    access_key_id: string | null;
+    secret_access_key_masked: string | null;
+    secret_access_key_set: boolean;
+    hot_days: number;
+    size_trigger_gb: number;
+    keep_local_pivots: boolean;
+    hydrate_cache_gb: number;
+    modules: string[];
+    last_run_at: string | null;
+    last_error: string | null;
+    bytes_archived: number;
+    bytes_local_uploads?: number | null;
+    updated_at: string | null;
+    updated_by_email: string | null;
+};
+
+export type CloudStorageSettingsUpdate = {
+    enabled?: boolean;
+    provider?: string;
+    endpoint_url?: string | null;
+    region?: string | null;
+    bucket?: string | null;
+    prefix?: string;
+    access_key_id?: string | null;
+    secret_access_key?: string;
+    hot_days?: number;
+    size_trigger_gb?: number;
+    keep_local_pivots?: boolean;
+    hydrate_cache_gb?: number;
+    modules?: string[];
+};
+
+export type StorageCandidate = {
+    path: string;
+    module: string;
+    bytes: number;
+    age_days: number;
+    remote_key: string;
+};
+
+export type StorageInventory = {
+    enabled?: boolean;
+    dry_run?: boolean;
+    uploads_total_bytes: number;
+    uploads_sized_files: number;
+    folders: Array<{ name: string; bytes: number; files: number }>;
+    size_trigger_gb: number;
+    size_trigger_hit: boolean;
+    hot_days: number;
+    modules: string[];
+    keep_local_pivots: boolean;
+    scanned_files: number;
+    already_cold: number;
+    candidate_count: number;
+    candidate_bytes: number;
+    should_run: boolean;
+    trigger: string;
+    candidates: StorageCandidate[];
+    candidates_truncated: number;
+    policy?: {
+        hot_days: number;
+        size_trigger_gb: number;
+        keep_local_pivots: boolean;
+        hydrate_cache_gb: number;
+        modules: string[];
+        trigger: string;
+        keep_local: string[];
+    };
+};
+
+export type StorageTestResult = {
+    ok: boolean;
+    status: string;
+    detail?: string;
+    bucket?: string;
+    endpoint_url?: string | null;
+    provider?: string;
+};
+
+export async function getStorageSettings(token: string): Promise<CloudStorageSettings> {
+    const res = await fetch(`${API_URL}/it/storage-settings`, {
+        headers: authHeaders(token),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export async function putStorageSettings(
+    token: string,
+    payload: CloudStorageSettingsUpdate
+): Promise<CloudStorageSettings> {
+    const res = await fetch(`${API_URL}/it/storage-settings`, {
+        method: "PUT",
+        headers: authHeaders(token, true),
+        body: JSON.stringify(payload),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export async function testStorageConnection(token: string): Promise<StorageTestResult> {
+    const res = await fetch(`${API_URL}/it/storage-settings/test-connection`, {
+        method: "POST",
+        headers: authHeaders(token),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export async function getStorageInventory(token: string): Promise<StorageInventory> {
+    const res = await fetch(`${API_URL}/it/storage-settings/inventory`, {
+        headers: authHeaders(token),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
+export async function archiveStorageNow(
+    token: string,
+    dryRun = true
+): Promise<StorageInventory & { job?: { id: string; status: string; message: string } }> {
+    const params = new URLSearchParams({ dry_run: dryRun ? "true" : "false" });
+    const res = await fetch(`${API_URL}/it/storage-settings/archive-now?${params}`, {
+        method: "POST",
+        headers: authHeaders(token),
+        cache: "no-store",
+    });
+    if (!res.ok) throw new Error(await parseError(res));
+    return res.json();
+}
+
 export async function runSysSpeedTest(token: string): Promise<SysSpeedTestResult> {
     const res = await fetch(`${API_URL}/it/sys-performance/speed-test`, {
         method: "POST",

@@ -45,6 +45,15 @@ celery.conf.update(
 )
 
 
+@celery.task(name="cloud_storage.archive_cold_uploads")
+def archive_cold_uploads() -> dict:
+    """Archive file cold ke object storage (dipanggil manual / nanti beat)."""
+    from utils.process_jobs import enqueue_job, get_job, public_job_view
+
+    job = enqueue_job(kind="cloud_archive", user_id=0, payload={"source": "celery"})
+    return public_job_view(get_job(job["id"]) or job)
+
+
 @celery.task(name="process_jobs.run_job", bind=True)
 def run_job(self, job_id: str) -> dict:
     """Eksekusi satu job berat di worker process."""

@@ -410,3 +410,68 @@ class RoleOption(SQLModel):
     role: str
     description: str
 
+
+class CloudStorageSettings(SQLModel, table=True):
+    """Pengaturan API cloud storage untuk arsip data dingin (IT > Sys Performance)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    enabled: bool = Field(default=False)
+    provider: str = Field(default="s3_compatible")
+    endpoint_url: Optional[str] = None
+    region: Optional[str] = Field(default="auto")
+    bucket: Optional[str] = None
+    prefix: str = Field(default="bps-jne/")
+    access_key_id: Optional[str] = None
+    # Disimpan terenkripsi (Fernet dari JWT_SECRET_KEY); jangan pernah dikirim ke UI.
+    secret_access_key_enc: Optional[str] = None
+    hot_days: int = Field(default=45)
+    size_trigger_gb: int = Field(default=100)
+    keep_local_pivots: bool = Field(default=True)
+    hydrate_cache_gb: int = Field(default=5)
+    # Daftar folder uploads/ yang ikut diarsipkan, dipisah koma.
+    modules: str = Field(default="all_shipment,kiriman_yes,alc_penjualan,jobs")
+    last_run_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    bytes_archived: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_by_email: Optional[str] = None
+
+
+class CloudStorageSettingsRead(SQLModel):
+    enabled: bool
+    provider: str
+    endpoint_url: Optional[str] = None
+    region: Optional[str] = None
+    bucket: Optional[str] = None
+    prefix: str
+    access_key_id: Optional[str] = None
+    secret_access_key_masked: Optional[str] = None
+    secret_access_key_set: bool = False
+    hot_days: int
+    size_trigger_gb: int
+    keep_local_pivots: bool
+    hydrate_cache_gb: int
+    modules: List[str] = []
+    last_run_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+    bytes_archived: int = 0
+    bytes_local_uploads: Optional[int] = None
+    updated_at: Optional[datetime] = None
+    updated_by_email: Optional[str] = None
+
+
+class CloudStorageSettingsUpdate(SQLModel):
+    enabled: Optional[bool] = None
+    provider: Optional[str] = None
+    endpoint_url: Optional[str] = None
+    region: Optional[str] = None
+    bucket: Optional[str] = None
+    prefix: Optional[str] = None
+    access_key_id: Optional[str] = None
+    # Kosongkan / hilangkan field ini untuk mempertahankan secret yang tersimpan.
+    secret_access_key: Optional[str] = None
+    hot_days: Optional[int] = None
+    size_trigger_gb: Optional[int] = None
+    keep_local_pivots: Optional[bool] = None
+    hydrate_cache_gb: Optional[int] = None
+    modules: Optional[List[str]] = None
+

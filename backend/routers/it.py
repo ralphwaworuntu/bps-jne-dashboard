@@ -15,6 +15,8 @@ from models import (
     SystemErrorLog,
     SystemErrorLogRead,
     RoleOption,
+    CloudStorageSettingsRead,
+    CloudStorageSettingsUpdate,
 )
 
 router = APIRouter(prefix="/it", tags=["it"])
@@ -54,7 +56,7 @@ SECTION_ROLES: list[RoleOption] = [
     RoleOption(
         section="IT",
         role="Admin IT",
-        description="Kelola User, Log Error, Sys Performance",
+        description="Kelola User, Log Error, Sys Performance, Penyimpanan API",
     ),
 ]
 
@@ -256,6 +258,103 @@ def run_sys_performance_speed_test(
     from utils.sys_performance import run_internet_speedtest
 
     return run_internet_speedtest()
+
+
+@router.get("/storage-settings", response_model=CloudStorageSettingsRead)
+def get_storage_settings(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    require_it_admin(current_user)
+    from utils.cloud_storage.inventory import uploads_total_bytes
+    from utils.cloud_storage.settings_store import get_or_create_settings, settings_to_read
+
+    row = get_or_create_settings(session)
+    return settings_to_read(row, bytes_local_uploads=uploads_total_bytes())
+
+
+@router.put("/storage-settings", response_model=CloudStorageSettingsRead)
+def put_storage_settings(
+    payload: CloudStorageSettingsUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    require_it_admin(current_user)
+    from utils.cloud_storage.inventory import uploads_total_bytes
+    from utils.cloud_storage.settings_store import (
+        apply_update,
+        get_or_create_settings,
+        settings_to_read,
+    )
+
+    row = get_or_create_settings(session)
+    row = apply_update(
+        session,
+        row,
+        payload,
+        updated_by_email=current_user.email,
+    )
+    return settings_to_read(row, bytes_local_uploads=uploads_total_bytes())
+
+
+@router.post("/storage-settings/test-connection")
+def test_storage_connection(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    require_it_admin(current_user)
+    from utils.cloud_storage.s3_compatible import test_connection
+    from utils.cloud_storage.settings_store import get_or_create_settings
+
+    row = get_or_create_settings(session)
+    return test_connection(row)
+
+
+@router.get("/storage-settings/inventory")
+def get_storage_inventory(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    require_it_admin(current_user)
+    from utils.cloud_storage.inventory import collect_inventory
+    from utils.cloud_storage.policy import settings_policy_dict
+    from utils.cloud_storage.settings_store import get_or_create_settings
+
+    row = get_or_create_settings(session)
+    inv = collect_inventory(row)
+    inv["policy"] = settings_policy_dict(row)
+    inv["enabled"] = bool(row.enabled)
+    return inv
+
+
+@router.post("/storage-settings/archive-now")
+def archive_storage_now(
+    dry_run: bool = Query(default=True),
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_active_user),
+):
+    require_it_admin(current_user)
+    from utils.cloud_storage.archive import plan_archive
+    from utils.cloud_storage.settings_store import get_or_create_settings
+    from utils.process_jobs import enqueue_job, public_job_view
+
+    if dry_run:
+        plan = plan_archive(session)
+        plan["dry_run"] = True
+        return plan
+
+    row = get_or_create_settings(session)
+    if not row.enabled:
+        raise HTTPException(
+            status_code=400,
+            detail="Aktifkan API penyimpanan terlebih dahulu sebelum archive.",
+        )
+    job = enqueue_job(
+        kind="cloud_archive",
+        user_id=int(current_user.id or 0),
+        payload={"requested_by": current_user.email},
+    )
+    return {"dry_run": False, "job": public_job_view(job)}
 
 
 @router.get("/error-logs", response_model=list[SystemErrorLogRead])

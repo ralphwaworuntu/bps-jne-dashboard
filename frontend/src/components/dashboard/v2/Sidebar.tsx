@@ -28,6 +28,7 @@ import {
     Building2,
     Database,
     Activity,
+    Cloud,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -391,7 +392,11 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                 </div>
                             </Link>
 
-                            <Link href="/dashboard/v2/it/sys-performance" className="group cursor-pointer">
+                            <Link
+                                href="/dashboard/v2/it/sys-performance"
+                                className="group cursor-pointer"
+                                title="Monitor & Penyimpanan API"
+                            >
                                 <div
                                     className={`flex items-center rounded-xl p-3 gap-3 transition-all duration-300 ${
                                         pathname?.startsWith('/dashboard/v2/it/sys-performance')
@@ -419,6 +424,19 @@ export default function Sidebar({ isOpen, isCollapsed = false, toggleSidebar }: 
                                     )}
                                 </div>
                             </Link>
+                            {!isCollapsed && (
+                                <Link
+                                    href="/dashboard/v2/it/sys-performance?tab=storage"
+                                    className="group cursor-pointer"
+                                >
+                                    <div className="flex items-center rounded-xl py-2 pl-12 pr-3 gap-2 bg-white hover:bg-muted transition-all duration-300">
+                                        <Cloud className="size-4 shrink-0 text-secondary group-hover:text-foreground" />
+                                        <span className="text-sm font-medium text-secondary group-hover:text-foreground">
+                                            Penyimpanan API
+                                        </span>
+                                    </div>
+                                </Link>
+                            )}
                         </div>
                     </div>
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import DashboardLayout from "@/components/dashboard/v2/DashboardLayout";
 import PerformanceGauge from "@/components/dashboard/v2/PerformanceGauge";
+import StorageSettingsPanel from "./StorageSettingsPanel";
 import {
     Activity,
     Boxes,
@@ -106,6 +107,21 @@ export default function SysPerformancePage() {
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [speedTesting, setSpeedTesting] = useState(false);
     const [speedResult, setSpeedResult] = useState<SysSpeedTestResult | null>(null);
+    const [tab, setTab] = useState<"monitor" | "storage">("monitor");
+
+    useEffect(() => {
+        const q = new URLSearchParams(window.location.search).get("tab");
+        if (q === "storage") setTab("storage");
+    }, []);
+
+    const goTab = useCallback((next: "monitor" | "storage") => {
+        setTab(next);
+        const url =
+            next === "storage"
+                ? "/dashboard/v2/it/sys-performance?tab=storage"
+                : "/dashboard/v2/it/sys-performance";
+        window.history.replaceState(null, "", url);
+    }, []);
 
     const sampleClientMetrics = useCallback(() => {
         const perf = performance as Performance & {
@@ -168,12 +184,12 @@ export default function SysPerformancePage() {
     }, [router, load]);
 
     useEffect(() => {
-        if (!autoRefresh || speedTesting) return;
+        if (!autoRefresh || speedTesting || tab === "storage") return;
         const id = window.setInterval(() => {
             load();
         }, 10000);
         return () => window.clearInterval(id);
-    }, [autoRefresh, load, speedTesting]);
+    }, [autoRefresh, load, speedTesting, tab]);
 
     const handleSpeedTest = useCallback(async () => {
         const token = localStorage.getItem("token");
@@ -245,9 +261,10 @@ export default function SysPerformancePage() {
                         </h1>
                         <p className="mt-2 max-w-2xl text-sm text-secondary">
                             Snapshot real-time dari host API (VPS), layanan DB/Redis/Celery,
-                            antrian job, dan penyimpanan upload — bukan histori jangka panjang.
+                            antrian job, dan pengaturan API penyimpanan cloud.
                         </p>
                     </div>
+                    {tab === "monitor" ? (
                     <div className="flex flex-wrap items-center gap-2">
                         <label className="inline-flex cursor-pointer items-center gap-2 rounded-[var(--radius-button)] border border-border bg-white px-4 py-2 text-sm font-semibold text-foreground">
                             <input
@@ -267,16 +284,44 @@ export default function SysPerformancePage() {
                             Refresh
                         </button>
                     </div>
+                    ) : null}
                 </div>
 
-                {loading && !data ? (
+                <div className="flex gap-1 border-b border-border">
+                    <button
+                        type="button"
+                        onClick={() => goTab("monitor")}
+                        className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                            tab === "monitor"
+                                ? "border-b-2 border-primary text-primary"
+                                : "text-secondary hover:text-foreground"
+                        }`}
+                    >
+                        Monitor
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => goTab("storage")}
+                        className={`px-4 py-2 text-sm font-semibold transition-colors ${
+                            tab === "storage"
+                                ? "border-b-2 border-primary text-primary"
+                                : "text-secondary hover:text-foreground"
+                        }`}
+                    >
+                        Penyimpanan API
+                    </button>
+                </div>
+
+                {tab === "storage" ? <StorageSettingsPanel /> : null}
+
+                {tab === "monitor" && loading && !data ? (
                     <div className="flex items-center justify-center gap-2 py-24 text-secondary">
                         <Loader2 className="size-5 animate-spin" />
                         Memuat metrik sistem…
                     </div>
                 ) : null}
 
-                {data && g ? (
+                {tab === "monitor" && data && g ? (
                     <>
                         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                             <MetaCard
@@ -879,6 +924,13 @@ export default function SysPerformancePage() {
                                     <h3 className="font-semibold text-foreground">
                                         Upload storage
                                     </h3>
+                                    <button
+                                        type="button"
+                                        onClick={() => goTab("storage")}
+                                        className="ml-auto text-sm font-semibold text-primary hover:underline"
+                                    >
+                                        Atur API penyimpanan
+                                    </button>
                                 </div>
                                 <p className="mb-3 text-sm text-secondary">
                                     Total{" "}

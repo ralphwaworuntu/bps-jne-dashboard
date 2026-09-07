@@ -418,13 +418,18 @@ def list_available_dates() -> List[str]:
     if not INBOUND_DAILY_DIR.exists():
         return []
     dates = []
-    for p in INBOUND_DAILY_DIR.glob("*.csv"):
-        if p.name.endswith(".meta") or p.name.endswith(".pivot.json"):
+    for p in INBOUND_DAILY_DIR.iterdir():
+        if not p.is_file():
             continue
-        stem = p.stem
-        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", stem):
+        name = p.name
+        stem = None
+        if name.endswith(".csv.cold.json"):
+            stem = name[: -len(".csv.cold.json")]
+        elif name.endswith(".csv") and not name.endswith(".meta"):
+            stem = p.stem
+        if stem and re.fullmatch(r"\d{4}-\d{2}-\d{2}", stem):
             dates.append(stem)
-    return sorted(dates, reverse=True)
+    return sorted(set(dates), reverse=True)
 
 
 def _canonicalize_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -471,17 +476,23 @@ def _ensure_detail_columns(df: pd.DataFrame) -> pd.DataFrame:
 def read_inbound_frame(date_iso: Optional[str] = None) -> pd.DataFrame:
     INBOUND_DAILY_DIR.mkdir(parents=True, exist_ok=True)
     paths: List[Path] = []
+    from utils.cloud_storage.exceptions import ColdStorageUnavailable
+    from utils.cloud_storage.hydrate import resolve_readable_path
+    from utils.cloud_storage.stub import has_stub
+
     if date_iso:
         p = daily_file_path(date_iso)
-        if p.is_file():
+        if p.is_file() or has_stub(p):
             paths = [p]
     else:
         paths = [daily_file_path(d) for d in list_available_dates()]
 
     frames: List[pd.DataFrame] = []
+    last_cold_error: Optional[ColdStorageUnavailable] = None
     for path in paths:
         try:
-            df = pd.read_csv(path, dtype=str, keep_default_na=False)
+            readable = resolve_readable_path(path)
+            df = pd.read_csv(readable, dtype=str, keep_default_na=False)
             df.columns = [str(c).strip() for c in df.columns]
             df = _canonicalize_columns(df)
             if UPLOAD_DATE_COL not in df.columns:
@@ -498,9 +509,16 @@ def read_inbound_frame(date_iso: Optional[str] = None) -> pd.DataFrame:
                 df["ID_ACCOUNT"] = df["ID_ACCOUNT"].map(_strip_apostrophe)
             # Bake-once: geo sudah diisi saat upload; jangan VLOOKUP ulang saat read.
             frames.append(df)
+        except ColdStorageUnavailable as exc:
+            last_cold_error = exc
+            if date_iso:
+                raise
+            continue
         except Exception:
             continue
     if not frames:
+        if date_iso and last_cold_error:
+            raise last_cold_error
         empty = pd.DataFrame(columns=INBOUND_DETAIL_COLUMNS + [UPLOAD_DATE_COL])
         return empty
     return pd.concat(frames, ignore_index=True)
