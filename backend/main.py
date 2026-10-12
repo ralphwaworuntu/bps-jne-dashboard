@@ -117,8 +117,17 @@ def on_startup():
 
         ini = Path(__file__).resolve().parent / "alembic.ini"
         if ini.is_file():
+            from alembic.runtime.migration import MigrationContext
+            from alembic.script import ScriptDirectory
+            from database import engine
+
             cfg = Config(str(ini))
-            command.upgrade(cfg, "head")
+            cfg.attributes["configure_logger"] = False
+            script = ScriptDirectory.from_config(cfg)
+            with engine.connect() as conn:
+                current = MigrationContext.configure(conn).get_current_revision()
+            if current != script.get_current_head():
+                command.upgrade(cfg, "head")
     except Exception as e:
         print(f"WARN alembic upgrade skipped: {e}")
     create_db_and_tables()
