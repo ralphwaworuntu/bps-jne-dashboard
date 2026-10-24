@@ -53,14 +53,14 @@ export default function LastmilePerformancePage() {
 
     const [filterDate, setFilterDate] = useState(todayIso());
     const [periodMode, setPeriodMode] = useState<"harian" | "bulanan">("harian");
-    const [cutoffDay, setCutoffDay] = useState<"2" | "8">("2");
+    const [cutoffDay, setCutoffDay] = useState<"8" | "22">("8");
 
     const [modalOpen, setModalOpen] = useState(false);
     const [uploadPeriodMode, setUploadPeriodMode] = useState<"harian" | "bulanan">(
         "harian"
     );
     const [uploadDate, setUploadDate] = useState(todayIso());
-    const [uploadCutoffDay, setUploadCutoffDay] = useState<"2" | "8">("2");
+    const [uploadCutoffDay, setUploadCutoffDay] = useState<"8" | "22">("8");
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [isDraggingFile, setIsDraggingFile] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -157,7 +157,7 @@ export default function LastmilePerformancePage() {
             return;
         }
         if (uploadPeriodMode === "bulanan" && !uploadCutoffDay) {
-            showToast("Pilih Tgl Update (Tgl 2 atau Tgl 8)", "error");
+            showToast("Pilih Tgl Update (Tgl 8 atau Tgl 22)", "error");
             return;
         }
         setUploading(true);
@@ -281,23 +281,23 @@ export default function LastmilePerformancePage() {
                                             <input
                                                 type="radio"
                                                 name="cutoff-day"
-                                                value="2"
-                                                checked={cutoffDay === "2"}
-                                                onChange={() => setCutoffDay("2")}
+                                                value="8"
+                                                checked={cutoffDay === "8"}
+                                                onChange={() => setCutoffDay("8")}
                                                 className="size-4 accent-sky-600"
                                             />
-                                            Tgl 2
+                                            Tgl 8
                                         </label>
                                         <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
                                             <input
                                                 type="radio"
                                                 name="cutoff-day"
-                                                value="8"
-                                                checked={cutoffDay === "8"}
-                                                onChange={() => setCutoffDay("8")}
+                                                value="22"
+                                                checked={cutoffDay === "22"}
+                                                onChange={() => setCutoffDay("22")}
                                                 className="size-4 accent-emerald-600"
                                             />
-                                            Tgl 8
+                                            Tgl 22
                                         </label>
                                     </div>
                                     <span className="text-[11px] text-secondary">
@@ -482,29 +482,29 @@ export default function LastmilePerformancePage() {
                                             <input
                                                 type="radio"
                                                 name="upload-cutoff-day"
-                                                value="2"
-                                                checked={uploadCutoffDay === "2"}
-                                                onChange={() => setUploadCutoffDay("2")}
+                                                value="8"
+                                                checked={uploadCutoffDay === "8"}
+                                                onChange={() => setUploadCutoffDay("8")}
                                                 className="size-4 accent-sky-600"
                                                 disabled={uploading}
                                             />
-                                            Tgl 2
+                                            Tgl 8
                                         </label>
                                         <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
                                             <input
                                                 type="radio"
                                                 name="upload-cutoff-day"
-                                                value="8"
-                                                checked={uploadCutoffDay === "8"}
-                                                onChange={() => setUploadCutoffDay("8")}
+                                                value="22"
+                                                checked={uploadCutoffDay === "22"}
+                                                onChange={() => setUploadCutoffDay("22")}
                                                 className="size-4 accent-emerald-600"
                                                 disabled={uploading}
                                             />
-                                            Tgl 8
+                                            Tgl 22
                                         </label>
                                     </div>
                                     <span className="text-xs text-secondary">
-                                        Pilih Tgl Update data bulanan (Tgl 2 atau Tgl 8).
+                                        Pilih Tgl Update data bulanan (Tgl 8 atau Tgl 22).
                                     </span>
                                 </fieldset>
                             )}
