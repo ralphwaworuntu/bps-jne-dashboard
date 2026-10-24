@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from 'framer-motion';
-import { Database, FolderTree, ArrowLeft, ShieldAlert, Download, Loader2, Package, CalendarClock, MapPin, MapPinned, PackageCheck } from 'lucide-react';
+import { Database, FolderTree, ArrowLeft, ShieldAlert, Download, Loader2, Package, CalendarClock, MapPin, MapPinned, PackageCheck, Gauge } from 'lucide-react';
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/dashboard/v2/DashboardLayout';
@@ -126,6 +126,35 @@ export default function LastmilePageV2() {
 
                                     <div className="flex w-fit items-center gap-2 text-sm font-medium text-indigo-600 bg-indigo-50 px-5 py-2.5 rounded-xl border border-indigo-200">
                                         Lihat Database <Database className="w-4 h-4 ml-1" />
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
+                    </Link>
+
+                    {/* Performance */}
+                    <Link href="/dashboard/v2/lastmile/performance" className="h-full">
+                        <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            className="group relative h-full overflow-hidden bg-white border border-border rounded-3xl p-6 cursor-pointer hover:shadow-lg transition-all"
+                        >
+                            <div className="absolute top-0 right-0 p-8 opacity-5 group-hover:opacity-10 transition-opacity">
+                                <Gauge className="w-32 h-32 text-sky-600" />
+                            </div>
+
+                            <div className="relative z-10 flex flex-col h-full min-h-[200px] justify-between">
+                                <div className="p-4 bg-sky-50 w-fit rounded-2xl mb-6">
+                                    <Gauge className="w-8 h-8 text-sky-600" />
+                                </div>
+
+                                <div>
+                                    <h2 className="text-2xl font-bold text-foreground mb-2">Performance</h2>
+                                    <p className="text-muted-foreground mb-6">
+                                        Pantau performa kiriman Lastmile.
+                                    </p>
+                                    <div className="flex w-fit items-center gap-2 text-sm font-medium text-sky-600 bg-sky-50 px-5 py-2.5 rounded-xl border border-sky-200">
+                                        Lihat Performance <Gauge className="w-4 h-4 ml-1" />
                                     </div>
                                 </div>
                             </div>
