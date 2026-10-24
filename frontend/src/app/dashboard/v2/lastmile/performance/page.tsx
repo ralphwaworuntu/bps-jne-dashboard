@@ -54,7 +54,6 @@ export default function LastmilePerformancePage() {
     const [filterDate, setFilterDate] = useState(todayIso());
     const [periodMode, setPeriodMode] = useState<"harian" | "bulanan">("harian");
     const [cutoffDay, setCutoffDay] = useState<"2" | "8">("2");
-    const [viewMode, setViewMode] = useState<"inbound" | "un_inbound">("inbound");
 
     const [modalOpen, setModalOpen] = useState(false);
     const [uploadPeriodMode, setUploadPeriodMode] = useState<"harian" | "bulanan">(
@@ -203,14 +202,14 @@ export default function LastmilePerformancePage() {
                         Performance
                     </h1>
                     <p className="mt-2 text-sm text-secondary">
-                        Pilih tampilan Harian / Bulanan, filter Inbound / Un Inbound,
-                        unduh XLSX all data, atau tambah data Performance.
+                        Pilih tampilan Harian / Bulanan, unduh XLSX all data,
+                        atau tambah data Performance.
                     </p>
                 </div>
 
                 <div className="rounded-2xl border border-border bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                             <fieldset className="flex flex-col gap-1.5">
                                 <legend className="text-sm font-semibold text-foreground">
                                     Periode Data
@@ -306,51 +305,6 @@ export default function LastmilePerformancePage() {
                                     </span>
                                 </fieldset>
                             ) : null}
-
-                            <fieldset className="flex flex-col gap-1.5">
-                                <legend className="text-sm font-semibold text-foreground">
-                                    Tampilkan Tabel
-                                </legend>
-                                <div className="flex flex-wrap gap-3 rounded-xl border border-border bg-white px-3 py-2.5">
-                                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                                        <input
-                                            type="radio"
-                                            name="view-mode"
-                                            value="inbound"
-                                            checked={viewMode === "inbound"}
-                                            onChange={() => {
-                                                setViewMode("inbound");
-                                                setCurrentPage(1);
-                                            }}
-                                            className="size-4 accent-sky-600"
-                                        />
-                                        Inbound
-                                    </label>
-                                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-foreground">
-                                        <input
-                                            type="radio"
-                                            name="view-mode"
-                                            value="un_inbound"
-                                            checked={viewMode === "un_inbound"}
-                                            onChange={() => {
-                                                setViewMode("un_inbound");
-                                                setCurrentPage(1);
-                                            }}
-                                            className="size-4 accent-amber-600"
-                                        />
-                                        Un Inbound
-                                    </label>
-                                </div>
-                                <span className="text-[11px] text-secondary">
-                                    {viewMode === "inbound"
-                                        ? `Data INBOUND (halaman ${currentPage}${
-                                              totalPages ? `/${totalPages}` : ""
-                                          })`
-                                        : `Data UN INBOUND (halaman ${currentPage}${
-                                              totalPages ? `/${totalPages}` : ""
-                                          })`}
-                                </span>
-                            </fieldset>
                         </div>
 
                         <div className="flex flex-nowrap items-center gap-2 lg:mt-[26px]">
